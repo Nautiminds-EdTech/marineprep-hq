@@ -47,5 +47,7 @@ Context for picking this work up later. Read this, then `README.md`. App-side co
 ## Next
 
 1. Reviews page is built (`src/lib/{reviews,play,appstore}.ts`, `/reviews`, collected in the daily cron, 1–2★ alerts,
-   Claude themes). Google Play is keyless (see README); App Store waits for the user's Team key (Customer Support).
+   Claude themes). Google Play is keyless (see README); App Store key `55GLRZ8TJN` (Customer Support) is live. Play history comes from bucket
+   `pubsite_prod_7752937647078030555` (needs the account-level "View app information and download bulk reports"
+   permission; storage access can lag up to a day — until then the run reports `history: … 403` and keeps API reviews).
 2. Later: Instagram pipeline. The user does the mobile priority fixes and UI revamp separately.

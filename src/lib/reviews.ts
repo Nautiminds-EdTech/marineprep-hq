@@ -66,7 +66,14 @@ export async function collectReviews(): Promise<CollectResult> {
           .eq("kind", "play_history_import")
           .eq("key", bucket)
           .maybeSingle();
-        const history = await fetchPlayReviewHistory(imported ? 2 : undefined);
+        let history: StoreReview[];
+        try {
+          history = await fetchPlayReviewHistory(imported ? 2 : undefined);
+        } catch (e) {
+          // Bucket access can lag the Play Console grant by up to a day; keep the API reviews meanwhile.
+          result.errors.google_play = `history: ${(e as Error).message.slice(0, 250)}`;
+          return recent;
+        }
         if (!imported) await db().from("hq_alerts").insert({ kind: "play_history_import", key: bucket, payload: { reviews: history.length } });
         const seen = new Set(recent.map((r) => r.review_id));
         return [...recent, ...history.filter((r) => !seen.has(r.review_id))];
