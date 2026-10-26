@@ -46,6 +46,6 @@ Context for picking this work up later. Read this, then `README.md`. App-side co
 
 ## Next
 
-1. Reviews page: collectors for Google Play (service account) and App Store Connect (API key, Customer Support role)
-   into `hq_reviews`, Claude themes, Telegram alert on 1–2★. Waiting on the user's credentials.
+1. Reviews page is built (`src/lib/{reviews,play,appstore}.ts`, `/reviews`, collected in the daily cron, 1–2★ alerts,
+   Claude themes). Google Play is keyless (see README); App Store waits for the user's Team key (Customer Support).
 2. Later: Instagram pipeline. The user does the mobile priority fixes and UI revamp separately.

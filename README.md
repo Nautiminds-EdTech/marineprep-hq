@@ -37,6 +37,7 @@ Sign in with the same Supabase email + password as the Flutter admin.
 | Overview | Supabase (users, payments, subscriptions, mock sessions, AI messages) | Re-queried every 30 s |
 | Funnel | PostHog: ordered funnel install → billing (30 days, by platform), feature reach (7 days); payers from Supabase | Cached a few minutes |
 | Quality | Sentry: crash-free sessions/users (7 days), open issues split into crashes, errors and expected noise | Cached a few minutes |
+| Reviews | `hq_reviews`: Google Play (last 7 days via API, kept forever here) + App Store, Claude themes, reply status | Daily + "Refresh now" |
 | Fix queue | `hq_fix_proposals`: proposals from Sentry issues, Claude's root cause + fix, approve/reject, GitHub issue | Every 20 s |
 | Connections | Which integrations have keys set (never shows values) | Per request |
 
@@ -55,6 +56,14 @@ a day); error-free users alert on a fall of 3 points or more. One message per da
 Fix flow: Sentry issue → **Propose fix** (Quality page or Telegram) → Claude drafts root cause, fix and test steps
 (`ANTHROPIC_API_KEY`, optional) → **Approve** in HQ or Telegram → GitHub issue in `GITHUB_REPO` → you fix it →
 closing the issue marks the proposal done.
+
+## Google Play without a key file
+
+The organisation blocks service-account key files, so HQ signs in keylessly: Vercel's OIDC token for this
+project's **production** deployment is exchanged (Google workload identity pool `vercel`, project `nautiminds`,
+number `309005205126`) for a short-lived token of `marineprep@nautiminds.iam.gserviceaccount.com`, which is invited
+in Play Console. This only works on Vercel production, so locally the Reviews page shows saved Google Play reviews
+only. Vercel → Settings → Security → OIDC federation must stay on (issuer mode: Team).
 
 ## Database
 
@@ -78,4 +87,4 @@ the service-role key (HQ's server) can touch them.
 ## Next
 
 - `ops` schema + collectors: Sentry (webhook), PostHog, Google Play, App Store Connect → Supabase tables.
-- Reviews page + collectors (Google Play, App Store Connect) into `hq_reviews`, with Claude themes.
+- Store installs and sales (Play reports bucket, App Store Sales role) next to the PostHog funnel.

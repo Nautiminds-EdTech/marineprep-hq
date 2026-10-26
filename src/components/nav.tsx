@@ -8,10 +8,9 @@ const items = [
   { href: "/funnel", label: "Funnel" },
   { href: "/quality", label: "Quality" },
   { href: "/fixes", label: "Fix queue" },
+  { href: "/reviews", label: "Reviews" },
   { href: "/connections", label: "Connections" },
 ] as const;
-
-const upcoming = ["Reviews"];
 
 export function Nav() {
   const pathname = usePathname();
@@ -32,15 +31,6 @@ export function Nav() {
           </Link>
         );
       })}
-      {upcoming.map((label) => (
-        <span
-          key={label}
-          className="hidden px-3 py-2 text-sm text-ink-3 md:block"
-          title="Coming in the next steps"
-        >
-          {label} <span className="text-xs">· soon</span>
-        </span>
-      ))}
     </nav>
   );
 }

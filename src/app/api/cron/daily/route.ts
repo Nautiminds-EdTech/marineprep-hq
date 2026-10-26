@@ -1,10 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
 import { briefText, saveSnapshot, snapshotMetrics, yesterdayNumbers } from "@/lib/brief";
 import { findDrops, formatDrop, MIN_HISTORY_DAYS } from "@/lib/drops";
+import { collectReviews } from "@/lib/reviews";
 import { createServiceClient } from "@/lib/supabase/server";
 import { esc, sendMessage, telegramConfigured, type Button } from "@/lib/telegram";
 
-export const maxDuration = 60;
+// Reviews (both stores + Claude themes) run before the brief.
+export const maxDuration = 120;
 
 function authorized(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -18,14 +20,17 @@ const shiftDay = (day: string, days: number) =>
   new Date(Date.parse(`${day}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 
 /**
- * Vercel Cron, every morning: save yesterday's numbers, post the brief to Telegram,
- * then alert on anything that fell well below its 7-day average.
+ * Vercel Cron, every morning: collect store reviews, save yesterday's numbers, post the brief
+ * to Telegram, then alert on anything that fell well below its 7-day average.
  */
 export async function GET(req: Request) {
   if (!authorized(req)) return new Response("Unauthorized", { status: 401 });
 
   const db = createServiceClient();
   if (!db) return new Response("SUPABASE_SERVICE_ROLE_KEY is not set", { status: 500 });
+
+  // Reviews first, so new 1–2★ alerts arrive before the brief. A store outage mustn't block the brief.
+  const reviews = await collectReviews().catch((e) => ({ error: (e as Error).message }));
 
   const numbers = await yesterdayNumbers(db);
   await saveSnapshot(db, numbers);
@@ -83,5 +88,6 @@ export async function GET(req: Request) {
     historyDays: Math.max(0, ...Object.values(history).map((v) => v.length)),
     drops,
     dropAlertSent,
+    reviews,
   });
 }

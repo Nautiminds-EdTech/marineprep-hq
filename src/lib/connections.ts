@@ -12,8 +12,16 @@ export const connections: Connection[] = [
   { name: "Supabase (service key)", purpose: "Cross-user counts: mocks, funnel steps", env: ["SUPABASE_SERVICE_ROLE_KEY"] },
   { name: "PostHog", purpose: "Funnels, retention, paywall by source", env: ["POSTHOG_REGION", "POSTHOG_PROJECT_ID", "POSTHOG_PERSONAL_API_KEY"] },
   { name: "Sentry", purpose: "Crash-free rate, top issues, live alerts", env: ["SENTRY_ORG", "SENTRY_PROJECT", "SENTRY_AUTH_TOKEN"], optional: ["SENTRY_WEBHOOK_SECRET"] },
-  { name: "Google Play", purpose: "Reviews, vitals, installs", env: ["GOOGLE_PLAY_SERVICE_ACCOUNT_B64", "GOOGLE_PLAY_REPORTS_BUCKET"] },
-  { name: "App Store Connect", purpose: "Reviews, downloads, IAP sales", env: ["APP_STORE_ISSUER_ID", "APP_STORE_KEY_ID", "APP_STORE_PRIVATE_KEY_B64", "APP_STORE_VENDOR_NUMBER"] },
+  {
+    name: "Google Play",
+    purpose: "Reviews (keyless sign-in from Vercel production)",
+    env: ["GCP_PROJECT_NUMBER", "GOOGLE_PLAY_SERVICE_ACCOUNT", "GOOGLE_PLAY_PACKAGE_NAME"],
+  },
+  {
+    name: "App Store Connect",
+    purpose: "Reviews",
+    env: ["APP_STORE_ISSUER_ID", "APP_STORE_KEY_ID", "APP_STORE_PRIVATE_KEY_B64", "APP_STORE_APP_ID"],
+  },
   {
     name: "Telegram",
     purpose: "Alerts, daily brief and approve/reject buttons",
