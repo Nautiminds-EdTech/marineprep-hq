@@ -1,7 +1,7 @@
 import "server-only";
 import { tagReviewThemes } from "@/lib/analyst";
 import { appStoreConfigured, fetchAppStoreReviews } from "@/lib/appstore";
-import { fetchPlayReviews, playAvailableHere, playConfigured } from "@/lib/play";
+import { fetchPlayReviewHistory, fetchPlayReviews, playAvailableHere, playConfigured, playReportsBucket } from "@/lib/play";
 import { createServiceClient } from "@/lib/supabase/server";
 import { esc, sendMessage, telegramConfigured, type Button } from "@/lib/telegram";
 
@@ -45,9 +45,37 @@ export type CollectResult = {
 /** Pulls reviews from both stores, saves them, alerts on new 1–2★ ones and tags themes. */
 export async function collectReviews(): Promise<CollectResult> {
   const result: CollectResult = { fetched: {}, errors: {}, alerted: 0, themed: 0 };
+  // The App Store's first run pulls the full history; after that only the newest pages.
+  const firstRun = async (store: Store) => {
+    const { count } = await db().from("hq_reviews").select("*", { count: "exact", head: true }).eq("store", store);
+    return !count;
+  };
   const sources: [Store, () => Promise<StoreReview[]>][] = [];
-  if (playConfigured() && playAvailableHere()) sources.push(["google_play", fetchPlayReviews]);
-  if (appStoreConfigured()) sources.push(["app_store", () => fetchAppStoreReviews()]);
+  if (playConfigured() && playAvailableHere()) {
+    sources.push([
+      "google_play",
+      async () => {
+        // Last 7 days from the API; older history (and star-only ratings) from the monthly reports.
+        const recent = await fetchPlayReviews();
+        const bucket = playReportsBucket();
+        if (!bucket) return recent;
+        // Full history once per bucket (marked in hq_alerts), then the two newest monthly files.
+        const { data: imported } = await db()
+          .from("hq_alerts")
+          .select("id")
+          .eq("kind", "play_history_import")
+          .eq("key", bucket)
+          .maybeSingle();
+        const history = await fetchPlayReviewHistory(imported ? 2 : undefined);
+        if (!imported) await db().from("hq_alerts").insert({ kind: "play_history_import", key: bucket, payload: { reviews: history.length } });
+        const seen = new Set(recent.map((r) => r.review_id));
+        return [...recent, ...history.filter((r) => !seen.has(r.review_id))];
+      },
+    ]);
+  }
+  if (appStoreConfigured()) {
+    sources.push(["app_store", async () => fetchAppStoreReviews((await firstRun("app_store")) ? 50 : 3)]);
+  }
 
   const all: StoreReview[] = [];
   await Promise.all(

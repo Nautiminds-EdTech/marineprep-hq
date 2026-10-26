@@ -15,6 +15,11 @@ export function playConfigured() {
   );
 }
 
+/** The Play Console bulk-reports bucket (pubsite_prod_rev_…), for review history older than a week. */
+export function playReportsBucket() {
+  return process.env.GOOGLE_PLAY_REPORTS_BUCKET?.replace(/^gs:\/\//, "").split("/")[0] || null;
+}
+
 /** True where the keyless sign-in can work (Vercel production). */
 export function playAvailableHere() {
   return process.env.VERCEL_ENV === "production";
@@ -28,7 +33,10 @@ function authClient() {
     token_url: "https://sts.googleapis.com/v1/token",
     service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${process.env.GOOGLE_PLAY_SERVICE_ACCOUNT}:generateAccessToken`,
     subject_token_supplier: { getSubjectToken: () => getVercelOidcToken() },
-    scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+    scopes: [
+      "https://www.googleapis.com/auth/androidpublisher",
+      "https://www.googleapis.com/auth/devstorage.read_only",
+    ],
   });
 }
 
@@ -80,6 +88,114 @@ export async function fetchPlayReviews(): Promise<StoreReview[]> {
     }
     token = data.tokenPagination?.nextPageToken;
     if (!token) break;
+  }
+  return reviews;
+}
+
+// ── Review history from the monthly bulk-report CSVs ─────────────────────────────
+
+/** Minimal RFC 4180 parser: quoted fields may contain commas, quotes ("") and newlines. */
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (c === '"') quoted = false;
+      else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") {
+      row.push(field);
+      field = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else field += c;
+  }
+  if (field || row.length) rows.push([...row, field]);
+  return rows.filter((r) => r.some((f) => f !== ""));
+}
+
+/** The Play reports are UTF-16 (usually LE with a BOM); fall back to UTF-8. */
+export function decodeReport(buf: ArrayBuffer) {
+  const bytes = new Uint8Array(buf);
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes.subarray(2));
+  if ((bytes[0] === 0xff && bytes[1] === 0xfe) || bytes[1] === 0) return new TextDecoder("utf-16le").decode(bytes);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+/**
+ * Reviews from the monthly report files (all history, including star-only ratings).
+ * `months` limits it to the newest N files; omit for everything.
+ */
+export async function fetchPlayReviewHistory(months?: number): Promise<StoreReview[]> {
+  const bucket = playReportsBucket();
+  if (!bucket) return [];
+  const headers = await authClient().getRequestHeaders();
+  const pkg = process.env.GOOGLE_PLAY_PACKAGE_NAME;
+
+  const list = await fetch(
+    `https://storage.googleapis.com/storage/v1/b/${bucket}/o?prefix=${encodeURIComponent(`reviews/reviews_${pkg}_`)}`,
+    { headers },
+  );
+  if (!list.ok) throw new Error(`Play reports ${list.status}: ${(await list.text()).slice(0, 200)}`);
+  const names = (((await list.json()) as { items?: { name: string }[] }).items ?? [])
+    .map((o) => o.name)
+    .sort()
+    .reverse()
+    .slice(0, months ?? Infinity);
+
+  const reviews: StoreReview[] = [];
+  for (const name of names) {
+    const res = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(name)}?alt=media`, {
+      headers,
+    });
+    if (!res.ok) throw new Error(`Play report ${name} ${res.status}`);
+    const [header, ...rows] = parseCsv(decodeReport(await res.arrayBuffer()));
+    const col = (label: string) => header.findIndex((h) => h.trim() === label);
+    const c = {
+      version: col("App Version Name"),
+      language: col("Reviewer Language"),
+      device: col("Device"),
+      submitted: col("Review Submit Millis Since Epoch"),
+      updated: col("Review Last Update Millis Since Epoch"),
+      rating: col("Star Rating"),
+      title: col("Review Title"),
+      text: col("Review Text"),
+      replyAt: col("Developer Reply Millis Since Epoch"),
+      reply: col("Developer Reply Text"),
+      link: col("Review Link"),
+    };
+    for (const r of rows) {
+      const rating = Number(r[c.rating]);
+      if (!(rating >= 1 && rating <= 5)) continue;
+      const millis = Number(r[c.updated] || r[c.submitted]);
+      // The link carries the same ID the API returns; star-only rows have no link.
+      const fromLink = /reviewid=([^&]+)/i.exec(r[c.link] ?? "")?.[1];
+      const id = fromLink ? decodeURIComponent(fromLink) : `csv:${r[c.submitted]}:${r[c.device] ?? ""}`;
+      reviews.push({
+        store: "google_play",
+        review_id: id,
+        rating,
+        title: r[c.title]?.trim() || null,
+        body: r[c.text]?.trim() || null,
+        author: null,
+        app_version: r[c.version] || null,
+        language: r[c.language] || null,
+        territory: null,
+        reviewed_at: new Date(millis || Date.now()).toISOString(),
+        reply_body: r[c.reply]?.trim() || null,
+        replied_at: r[c.replyAt] ? new Date(Number(r[c.replyAt])).toISOString() : null,
+      });
+    }
   }
   return reviews;
 }

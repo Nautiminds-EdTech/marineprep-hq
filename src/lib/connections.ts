@@ -16,6 +16,7 @@ export const connections: Connection[] = [
     name: "Google Play",
     purpose: "Reviews (keyless sign-in from Vercel production)",
     env: ["GCP_PROJECT_NUMBER", "GOOGLE_PLAY_SERVICE_ACCOUNT", "GOOGLE_PLAY_PACKAGE_NAME"],
+    optional: ["GOOGLE_PLAY_REPORTS_BUCKET"],
   },
   {
     name: "App Store Connect",
