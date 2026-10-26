@@ -18,10 +18,21 @@ export function AutoRefresh({ seconds = 30 }: { seconds?: number }) {
   }, [router, seconds]);
 
   return (
-    <p className="text-xs text-ink-3" aria-live="polite">
-      Updates every {seconds}s
-      {updated &&
-        ` · last ${updated.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", second: "2-digit" })}`}
+    <p
+      className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-xs text-ink-2"
+      aria-live="polite"
+      title={`Updates every ${seconds}s while this tab is open`}
+    >
+      <span className="relative flex size-2">
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-good opacity-60" />
+        <span className="relative inline-flex size-2 rounded-full bg-good" />
+      </span>
+      Live
+      {updated && (
+        <span className="text-ink-3">
+          · {updated.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", second: "2-digit" })}
+        </span>
+      )}
     </p>
   );
 }

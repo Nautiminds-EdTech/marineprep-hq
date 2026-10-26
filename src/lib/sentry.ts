@@ -27,6 +27,8 @@ export type Quality = {
   errorFreeUsers: number | null;
   /** One point per day, oldest first. */
   dailyCrashFreeSessions: { day: string; rate: number | null }[];
+  /** Share of each day's sessions with no error, oldest first; null on days without sessions. */
+  dailyErrorFreeSessions: { day: string; rate: number | null }[];
   issues: Issue[];
 };
 
@@ -143,6 +145,14 @@ export async function getQuality(days: number): Promise<Quality> {
     errorFreeSessions: totalSessions ? 1 - badSessions / totalSessions : null,
     errorFreeUsers: totalUsers ? Math.max(0, 1 - badUsers / totalUsers) : null,
     dailyCrashFreeSessions: sessions.intervals.map((day, i) => ({ day, rate: daily[i] ?? null })),
+    dailyErrorFreeSessions: byStatus.intervals.map((day, i) => {
+      const at = (pick: (status: string) => boolean) =>
+        byStatus.groups
+          .filter((g) => pick(g.by["session.status"]))
+          .reduce((s, g) => s + Number(g.series["sum(session)"]?.[i] ?? 0), 0);
+      const total = at(() => true);
+      return { day, rate: total ? 1 - at((st) => st !== "healthy") / total : null };
+    }),
     issues: rawIssues.map((i) => ({
       id: i.id,
       shortId: i.shortId,

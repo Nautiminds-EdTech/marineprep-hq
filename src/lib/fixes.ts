@@ -39,6 +39,13 @@ export async function listProposals(): Promise<FixProposal[]> {
   return data as FixProposal[];
 }
 
+/** Proposals waiting for an approve/reject decision. */
+export async function countWaiting() {
+  const { count, error } = await db().select("*", { count: "exact", head: true }).eq("status", "proposed");
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 /** Proposal IDs keyed by Sentry short ID, for "already in the queue" links. */
 export async function proposalsForSentry(shortIds: string[]) {
   if (!shortIds.length) return new Map<string, { id: string; status: Status }>();

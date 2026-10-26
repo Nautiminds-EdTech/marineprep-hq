@@ -2,17 +2,25 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
 import { createServiceClient, createSessionClient } from "@/lib/supabase/server";
-import { istDayStart } from "@/lib/time";
+import { istDay, istDayStart, lastIstDays } from "@/lib/time";
 
 // IMUCET 2027 is expected late May; update when IMU announces the date.
 export const EXAM_DATE = "2027-05-23";
+// The day after the previous IMUCET, where the season the countdown measures begins.
+const SEASON_START = "2026-05-24";
 
 export type Activity = { id: string; kind: "signup" | "purchase"; who: string; detail: string; at: string };
+
+/** One IST day of activity. `mocks` is null without the service key. */
+export type DayPoint = { day: string; signups: number; purchases: number; revenue: number; mocks: number | null };
+
+export const SERIES_DAYS = 30;
 
 export type Overview = {
   /** False while running on the admin's session: tables without admin RLS policies are hidden. */
   fullAccess: boolean;
-  signups: { today: number; last7: number; total: number };
+  /** prev7 is the 7 days before last7, for the week-over-week change. */
+  signups: { today: number; last7: number; prev7: number; total: number };
   purchases: { today: number; last7: number; appleLast30: number };
   /** Rupees, gross (before Apple's commission and Razorpay fees). */
   revenue: { last7: number; last30: number; razorpayLast30: number; appleLast30: number };
@@ -20,6 +28,12 @@ export type Overview = {
   mocks: { startedToday: number; completedToday: number } | null;
   aiMessagesToday: number;
   daysToExam: number;
+  /** 0–1, how far today is from SEASON_START to the exam. */
+  seasonProgress: number;
+  /** Latest real (non-Sandbox) captured payment, any provider. */
+  lastPurchaseAt: string | null;
+  /** The last SERIES_DAYS IST days, oldest first, ending today. */
+  series: DayPoint[];
   activity: Activity[];
 };
 
@@ -47,6 +61,23 @@ async function count(db: SupabaseClient, table: string, since?: string, filters:
   return count ?? 0;
 }
 
+/** Every row's created_at since `since`, a page at a time (PostgREST caps a response at 1,000 rows). */
+async function createdSince(db: SupabaseClient, table: string, since: string) {
+  const rows: string[] = [];
+  for (let from = 0; from < 50_000; from += 1000) {
+    const { data, error } = await db
+      .from(table)
+      .select("created_at")
+      .gte("created_at", since)
+      .order("created_at")
+      .range(from, from + 999);
+    if (error) throw new Error(`${table}: ${error.message}`);
+    rows.push(...data.map((r) => r.created_at as string));
+    if (data.length < 1000) break;
+  }
+  return rows;
+}
+
 function displayName(u: Row | undefined) {
   const name = (u?.name ?? u?.full_name) as string | undefined;
   return name?.trim() || "Student";
@@ -60,6 +91,7 @@ export async function getOverview(): Promise<Overview> {
   const today = istDayStart(0);
   const week = istDayStart(6);
   const month = istDayStart(29);
+  const fortnight = istDayStart(13);
   const captured: Filter[] = [
     ["eq", "status", "captured"],
     ["or", NOT_SANDBOX],
@@ -68,6 +100,7 @@ export async function getOverview(): Promise<Overview> {
   const [
     signupsToday,
     signups7,
+    signups14,
     signupsTotal,
     purchasesToday,
     purchases7,
@@ -77,9 +110,12 @@ export async function getOverview(): Promise<Overview> {
     recentUsers,
     recentPayments,
     mocks,
+    signupDays,
+    mockDays,
   ] = await Promise.all([
     count(db, "users", today),
     count(db, "users", week),
+    count(db, "users", fortnight),
     count(db, "users"),
     count(db, "payments", today, captured),
     count(db, "payments", week, captured),
@@ -112,6 +148,8 @@ export async function getOverview(): Promise<Overview> {
           ]),
         ])
       : Promise.resolve(null),
+    createdSince(db, "users", month),
+    service ? createdSince(service, "practice_test_sessions", month) : Promise.resolve(null),
   ]);
 
   const rows30 = (payments30.data ?? []) as Row[];
@@ -137,6 +175,25 @@ export async function getOverview(): Promise<Overview> {
     : { data: [] as Row[] };
   const byId = new Map((payerRows ?? []).map((u: Row) => [u.id as string, u]));
 
+  const tally = (stamps: string[]) => {
+    const m = new Map<string, number>();
+    for (const at of stamps) m.set(istDay(at), (m.get(istDay(at)) ?? 0) + 1);
+    return m;
+  };
+  const signupsByDay = tally(signupDays);
+  const mocksByDay = mockDays ? tally(mockDays) : null;
+  const inr = rows30.filter((p) => (p.currency ?? "INR") === "INR");
+  const series: DayPoint[] = lastIstDays(SERIES_DAYS).map((day) => {
+    const paid = inr.filter((p) => istDay(p.created_at as string) === day);
+    return {
+      day,
+      signups: signupsByDay.get(day) ?? 0,
+      purchases: paid.length,
+      revenue: paid.reduce((s, p) => s + Number(p.amount ?? 0) / 100, 0),
+      mocks: mocksByDay ? (mocksByDay.get(day) ?? 0) : null,
+    };
+  });
+
   const activity: Activity[] = [
     ...((recentUsers.data ?? []) as Row[]).map((u) => ({
       id: `u-${u.id}`,
@@ -159,7 +216,7 @@ export async function getOverview(): Promise<Overview> {
 
   return {
     fullAccess: !!service,
-    signups: { today: signupsToday, last7: signups7, total: signupsTotal },
+    signups: { today: signupsToday, last7: signups7, prev7: signups14 - signups7, total: signupsTotal },
     purchases: {
       today: purchasesToday,
       last7: purchases7,
@@ -175,6 +232,11 @@ export async function getOverview(): Promise<Overview> {
     mocks: mocks ? { startedToday: mocks[0], completedToday: mocks[1] } : null,
     aiMessagesToday: aiToday,
     daysToExam: Math.ceil((Date.parse(`${EXAM_DATE}T00:00:00+05:30`) - Date.now()) / 86_400_000),
+    seasonProgress:
+      (Date.now() - Date.parse(`${SEASON_START}T00:00:00+05:30`)) /
+      (Date.parse(`${EXAM_DATE}T00:00:00+05:30`) - Date.parse(`${SEASON_START}T00:00:00+05:30`)),
+    lastPurchaseAt: (payers[0]?.created_at as string | undefined) ?? null,
+    series,
     activity,
   };
 }

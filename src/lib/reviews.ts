@@ -184,6 +184,18 @@ async function tagUntagged() {
   return tagged;
 }
 
+/** Low ratings (≤3★) from the last 30 days without a reply, for the nav badge and Overview. */
+export async function countUnansweredLow() {
+  const { count, error } = await db()
+    .from("hq_reviews")
+    .select("*", { count: "exact", head: true })
+    .lte("rating", 3)
+    .is("reply_body", null)
+    .gte("reviewed_at", new Date(Date.now() - 30 * 86_400_000).toISOString());
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 export async function listReviews(filter: { store?: Store; low?: boolean; limit?: number } = {}) {
   let q = db()
     .from("hq_reviews")
@@ -227,5 +239,7 @@ export async function reviewStats(days: number) {
     play: byStore("google_play"),
     appStore: byStore("app_store"),
     themes: [...themes.entries()].sort((a, b) => b[1].count - a[1].count),
+    /** Reviews per star rating, 5★ first. */
+    distribution: [5, 4, 3, 2, 1].map((stars) => ({ stars, count: data.filter((r) => r.rating === stars).length })),
   };
 }

@@ -1,13 +1,14 @@
 import Link from "next/link";
+import { Notice } from "./notice";
 
 export function NotConnected({ service }: { service: string }) {
   return (
-    <p className="card p-4 text-sm text-ink-2">
+    <Notice tone="warning">
       {service} isn&apos;t connected yet. Add its keys to the server environment; see{" "}
-      <Link href="/connections" className="text-accent underline-offset-2 hover:underline">
+      <Link href="/connections" className="font-medium text-accent underline-offset-2 hover:underline">
         Connections
       </Link>
       .
-    </p>
+    </Notice>
   );
 }
