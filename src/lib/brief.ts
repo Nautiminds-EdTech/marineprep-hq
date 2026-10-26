@@ -69,8 +69,9 @@ export async function yesterdayNumbers(db: SupabaseClient): Promise<DayNumbers> 
   };
 }
 
-export async function saveSnapshot(db: SupabaseClient, d: DayNumbers) {
-  const metrics: Record<string, number | null> = {
+/** The metrics stored per day in hq_daily_snapshots (nulls are skipped). */
+export function snapshotMetrics(d: DayNumbers): Record<string, number | null> {
+  return {
     signups: d.signups,
     payers: d.payers,
     revenue_inr: d.revenueInr,
@@ -79,7 +80,10 @@ export async function saveSnapshot(db: SupabaseClient, d: DayNumbers) {
     ai_messages: d.aiMessages,
     error_free_users_7d: d.errorFreeUsers7d,
   };
-  const rows = Object.entries(metrics)
+}
+
+export async function saveSnapshot(db: SupabaseClient, d: DayNumbers) {
+  const rows = Object.entries(snapshotMetrics(d))
     .filter(([, v]) => v !== null)
     .map(([metric, value]) => ({ day: d.day, metric, value }));
   const { error } = await db.from("hq_daily_snapshots").upsert(rows, { onConflict: "day,metric" });

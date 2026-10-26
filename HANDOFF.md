@@ -24,7 +24,10 @@ Context for picking this work up later. Read this, then `README.md`. App-side co
   (only `TELEGRAM_ADMIN_IDS`, currently the CTO only, by choice) → GitHub **issue** in
   `Nautiminds-EdTech/marineprep-user-app` → the user fixes it → closing the issue marks the proposal done.
   The user chose issues only, no automatic PRs.
-- Daily cron 09:00 IST: saves yesterday's numbers to `hq_daily_snapshots` and posts the brief to Telegram once.
+- Daily cron 09:00 IST: saves yesterday's numbers to `hq_daily_snapshots`, posts the brief to Telegram once, then a
+  drop alert when a metric falls well below its 7-day average (`src/lib/drops.ts`; silent until 7 days of history,
+  i.e. from about 1 Nov 2026).
+- Pushes to `main` deploy to production through Vercel's Git integration.
 - HQ tables: `hq_fix_proposals`, `hq_alerts`, `hq_reviews`, `hq_daily_snapshots` (service-role only, RLS on, no grants).
 - Messages to the Telegram bot record the sender in `hq_alerts` (kind `telegram_user`), since `getUpdates` no longer
   works with the webhook set.
@@ -45,5 +48,4 @@ Context for picking this work up later. Read this, then `README.md`. App-side co
 
 1. Reviews page: collectors for Google Play (service account) and App Store Connect (API key, Customer Support role)
    into `hq_reviews`, Claude themes, Telegram alert on 1–2★. Waiting on the user's credentials.
-2. Drop alerts from `hq_daily_snapshots` once about a week of data exists.
-3. Later: Instagram pipeline. The user does the mobile priority fixes and UI revamp separately.
+2. Later: Instagram pipeline. The user does the mobile priority fixes and UI revamp separately.

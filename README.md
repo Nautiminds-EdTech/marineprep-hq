@@ -7,9 +7,8 @@ Live at **https://marineprep-hq.vercel.app** (Vercel, team `nautiminds-projects`
 
 ## Deploy
 
-```bash
-vercel --scope nautiminds-projects deploy --prod --yes
-```
+Pushing to `main` on `Nautiminds-EdTech/marineprep-hq` deploys to production (Vercel Git integration).
+Manual deploy if needed: `vercel --scope nautiminds-projects deploy --prod --yes`.
 
 Environment variables live in the Vercel project (production). After changing one there, redeploy.
 `vercel.json` pins functions to `bom1` (Mumbai, next to Supabase), sets the framework and the daily cron.
@@ -47,7 +46,11 @@ Sign in with the same Supabase email + password as the Flutter admin.
 |---|---|---|
 | `/api/webhooks/sentry` | Sentry internal integration, `issue.created` (HMAC-verified with `SENTRY_WEBHOOK_SECRET`) | Skips expected noise, alerts Telegram once per issue with a **Propose fix** button |
 | `/api/webhooks/telegram` | Telegram bot webhook (`TELEGRAM_WEBHOOK_SECRET` header) | **Propose fix / Approve / Reject** buttons; only `TELEGRAM_ADMIN_IDS` can press them |
-| `/api/cron/daily` | Vercel Cron 09:00 IST (`CRON_SECRET`) | Saves yesterday's numbers to `hq_daily_snapshots`, posts the brief to Telegram once |
+| `/api/cron/daily` | Vercel Cron 09:00 IST (`CRON_SECRET`) | Saves yesterday's numbers to `hq_daily_snapshots`, posts the brief to Telegram once, then a drop alert if needed |
+
+Drop alerts (`src/lib/drops.ts`) compare yesterday with the 7 days before and stay silent until 7 days of history
+exist. Signups, mocks started and AI messages alert below half their average (only when the average is at least 5
+a day); error-free users alert on a fall of 3 points or more. One message per day.
 
 Fix flow: Sentry issue → **Propose fix** (Quality page or Telegram) → Claude drafts root cause, fix and test steps
 (`ANTHROPIC_API_KEY`, optional) → **Approve** in HQ or Telegram → GitHub issue in `GITHUB_REPO` → you fix it →
@@ -76,4 +79,3 @@ the service-role key (HQ's server) can touch them.
 
 - `ops` schema + collectors: Sentry (webhook), PostHog, Google Play, App Store Connect → Supabase tables.
 - Reviews page + collectors (Google Play, App Store Connect) into `hq_reviews`, with Claude themes.
-- Drop alerts from `hq_daily_snapshots` (e.g. signups or error-free users falling).
