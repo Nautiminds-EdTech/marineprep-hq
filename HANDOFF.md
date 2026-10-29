@@ -357,6 +357,16 @@ Build each with the new components and tokens above, so new pages match the rede
      monthly report CSVs and HQ re-read only the newest two. Now every run reads all files (≤24), merges duplicates
      preferring the copy with a reply, and records per-file counts in `hq_alerts` kind `play_reports_check` (key =
      date) so you can see which files carry replies. Rows without a reply no longer overwrite a saved reply.
+   - **Finding (29 Oct, after the user's refreshes):** every report file has the reply column but **0 replies**,
+     although the user replied in Play Console on 27 Oct. Google doesn't backfill replies into the CSVs, and the
+     list API only covers reviews users created/edited in the last 7 days. So each refresh now also calls
+     `reviews.get` for unanswered Play reviews with text (≤30) and records `lookups` {tried, found, replied, error}
+     in the same `play_reports_check` row. **Check that row after the next refresh** to see if Google returns old
+     reviews by ID. Fallback either way: a "Replied in Play Console" button on Play cards (`markAnswered`).
+   - **App facts** (`/reviews/app-facts`, `hq_settings` key `app_facts`, migration
+     `20261029160000_hq_settings.sql`): what the app offers now (free vs paid etc.), edited by the user; included in
+     every reply prompt with the review date and today's date, so a reply can say what changed since the review.
+     Falls back to a built-in starting text if the table or row is missing.
    - Review cards: "Draft a reply" (any answerable review) and "Reply draft waiting" links.
    - Sending: Play `reviews.reply` (production only, keyless); App Store `customerReviewResponses` (existing
      Customer Support key). Old Play reviews may be out of the API's reach: the error says to reply in Play Console.

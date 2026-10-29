@@ -1,7 +1,7 @@
 import "server-only";
 import { tagReviewThemes } from "@/lib/analyst";
 import { appStoreConfigured, fetchAppStoreReviews } from "@/lib/appstore";
-import { fetchPlayReviewHistory, fetchPlayReviews, playAvailableHere, playConfigured, playReportsBucket, type ReportFileStats } from "@/lib/play";
+import { fetchPlayReview, fetchPlayReviewHistory, fetchPlayReviews, playAvailableHere, playConfigured, playReportsBucket, type ReportFileStats } from "@/lib/play";
 import { createServiceClient } from "@/lib/supabase/server";
 import { esc, sendMessage, telegramConfigured, type Button } from "@/lib/telegram";
 
@@ -76,10 +76,6 @@ export async function collectReviews(): Promise<CollectResult> {
         const files: ReportFileStats[] = [];
         try {
           history = await fetchPlayReviewHistory(24, files);
-          // What the report files contain today (rows, text, replies per file), for checking from the DB.
-          await db()
-            .from("hq_alerts")
-            .upsert({ kind: "play_reports_check", key: new Date().toISOString().slice(0, 10), payload: { files } }, { onConflict: "kind,key" });
         } catch (e) {
           // Bucket access can lag the Play Console grant by up to a day; keep the API reviews meanwhile.
           result.errors.google_play = `history: ${(e as Error).message.slice(0, 250)}`;
@@ -87,7 +83,33 @@ export async function collectReviews(): Promise<CollectResult> {
         }
         if (!imported) await db().from("hq_alerts").insert({ kind: "play_history_import", key: bucket, payload: { reviews: history.length } });
         const seen = new Set(recent.map((r) => r.review_id));
-        return [...recent, ...history.filter((r) => !seen.has(r.review_id))];
+        const combined = [...recent, ...history.filter((r) => !seen.has(r.review_id))];
+
+        // The report files never pick up a reply posted later in Play Console (checked 29 Oct: 0 replies in
+        // every file), so ask for each unanswered review with text by ID, which may include the reply.
+        const lookups = { tried: 0, found: 0, replied: 0, error: null as string | null };
+        const { data: saved } = await db().from("hq_reviews").select("review_id").eq("store", "google_play").not("reply_body", "is", null);
+        const answered = new Set((saved ?? []).map((r) => r.review_id));
+        for (const r of combined.filter((r) => r.body && !r.reply_body && !seen.has(r.review_id) && !r.review_id.startsWith("csv:") && !answered.has(r.review_id)).slice(0, 30)) {
+          lookups.tried++;
+          try {
+            const got = await fetchPlayReview(r.review_id);
+            if (!got) continue;
+            lookups.found++;
+            if (got.reply_body) {
+              lookups.replied++;
+              r.reply_body = got.reply_body;
+              r.replied_at = got.replied_at;
+            }
+          } catch (e) {
+            lookups.error ??= (e as Error).message.slice(0, 200);
+          }
+        }
+        // What the report files and lookups returned today, for checking from the DB.
+        await db()
+          .from("hq_alerts")
+          .upsert({ kind: "play_reports_check", key: new Date().toISOString().slice(0, 10), payload: { files, lookups } }, { onConflict: "kind,key" });
+        return combined;
       },
     ]);
   }
@@ -205,6 +227,17 @@ async function tagUntagged() {
     if (!error) tagged++;
   }
   return tagged;
+}
+
+/** Marks a review as answered when the reply was posted outside HQ and the store doesn't report it. */
+export async function markAnswered(store: Store, reviewId: string) {
+  const { error } = await db()
+    .from("hq_reviews")
+    .update({ reply_body: `(Replied in ${store === "google_play" ? "Play Console" : "App Store Connect"})`, replied_at: new Date().toISOString() })
+    .eq("store", store)
+    .eq("review_id", reviewId)
+    .is("reply_body", null);
+  if (error) throw new Error(error.message);
 }
 
 /** Low ratings (≤3★) from the last 30 days without a reply, for the nav badge and Overview. */

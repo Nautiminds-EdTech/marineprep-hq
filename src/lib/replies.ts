@@ -6,6 +6,7 @@ import { replyToAppStoreReview } from "@/lib/appstore";
 import { replyToPlayReview } from "@/lib/play";
 import { replyable, STORE_LABEL, type SavedReview, type Store } from "@/lib/reviews";
 import { claude, claudeErrorMessage, costUsd } from "@/lib/seo/claude";
+import { getAppFacts } from "@/lib/settings";
 import { createServiceClient } from "@/lib/supabase/server";
 import { editMessage, esc, sendMessage, telegramConfigured, type Button } from "@/lib/telegram";
 
@@ -78,8 +79,8 @@ Tone: professional, courteous and calm, like an experienced support team at an e
   "Hi <name>,". Otherwise no name.
 - English, unless the review is in Hindi (Devanagari or Latin script); then polite, simple Hindi in the same script.
 
-Facts: say only what the review or the description above supports. Don't describe what is free and what is paid
-beyond "paid plans unlock the full content". No promises: no dates, no "fixed in the next update", no refunds, no
+Facts: say only what the review, the description above or the <app_facts> in the message support. Don't invent
+what is free or paid beyond what <app_facts> says. No promises: no dates, no "fixed in the next update", no refunds, no
 discounts, no new features. Don't claim anything is fixed.
 
 needs_followup is your decision. Read the review and decide whether we can only help if they write to us:
@@ -124,8 +125,19 @@ export function draftProblems(text: string, needsFollowup: boolean) {
   return problems.length ? problems.join("; ") : null;
 }
 
-function reviewForPrompt(r: SavedReview, instruction?: string) {
+const longDate = (iso: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(iso));
+
+function reviewForPrompt(r: SavedReview, facts: string, instruction?: string) {
   return [
+    "<app_facts>",
+    "What the app offers today, kept up to date by the team. Where it differs from the description in your",
+    "instructions, these facts win. If the review complains about something these facts show has changed since the",
+    "review date, say so plainly (for example what free users can now do), without overselling.",
+    facts,
+    "</app_facts>",
+    "",
+    `Today: ${longDate(new Date().toISOString())}`,
+    `Review date: ${longDate(r.reviewed_at)}`,
     `Store: ${STORE_LABEL[r.store]}`,
     `Rating: ${r.rating} of 5`,
     r.author ? `Reviewer name: ${r.author}` : "Reviewer name: (none)",
@@ -142,7 +154,8 @@ function reviewForPrompt(r: SavedReview, instruction?: string) {
 /** Asks Claude for a reply; retries up to twice when the draft breaks a rule. */
 async function writeDraft(review: SavedReview, instruction?: string) {
   const client = claude();
-  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: reviewForPrompt(review, instruction) }];
+  const facts = (await getAppFacts()).text;
+  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: reviewForPrompt(review, facts, instruction) }];
   let cost = 0;
   let model = "claude-opus-5-5";
   for (let attempt = 0; attempt < 3; attempt++) {

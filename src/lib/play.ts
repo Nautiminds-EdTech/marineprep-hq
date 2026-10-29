@@ -92,6 +92,22 @@ export async function fetchPlayReviews(): Promise<StoreReview[]> {
   return reviews;
 }
 
+/**
+ * One review by ID, with any developer reply. The review list only covers the last 7 days and the
+ * report files don't pick up replies posted later, so this is how a Play Console reply to an older
+ * review reaches HQ (when Google returns it). Null when Google doesn't.
+ */
+export async function fetchPlayReview(reviewId: string): Promise<{ reply_body: string | null; replied_at: string | null } | null> {
+  const headers = await authClient().getRequestHeaders();
+  const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${process.env.GOOGLE_PLAY_PACKAGE_NAME}/reviews/${encodeURIComponent(reviewId)}`;
+  const res = await fetch(url, { headers });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Google Play ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const r = (await res.json()) as PlayReview;
+  const dev = r.comments?.find((c) => c.developerComment)?.developerComment;
+  return { reply_body: dev?.text?.trim() || null, replied_at: toIso(dev?.lastModified?.seconds) };
+}
+
 // ── Review history from the monthly bulk-report CSVs ─────────────────────────────
 
 /** Minimal RFC 4180 parser: quoted fields may contain commas, quotes ("") and newlines. */

@@ -1,4 +1,4 @@
-import { MessageSquareReply, MessageSquareWarning, PenLine, RefreshCw, Sparkles, Star, ThumbsDown } from "lucide-react";
+import { BookText, CheckCheck, MessageSquareReply, MessageSquareWarning, PenLine, RefreshCw, Sparkles, Star, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { NotConnected } from "@/components/not-connected";
@@ -14,7 +14,7 @@ import { repliesConfigured, repliesFor, type Reply } from "@/lib/replies";
 import { listReviews, replyable, reviewStats, STORE_LABEL, type SavedReview, type Store } from "@/lib/reviews";
 import { createServiceClient } from "@/lib/supabase/server";
 import { formatTimeIST, timeAgo } from "@/lib/time";
-import { draftForReviewAction, refreshReviews } from "./actions";
+import { draftForReviewAction, markAnsweredAction, refreshReviews } from "./actions";
 
 export const metadata = { title: "Reviews · MarinePrep HQ" };
 // Refreshing fetches both stores and may ask Claude for themes.
@@ -29,6 +29,10 @@ export default function ReviewsPage({ searchParams }: PageProps<"/reviews">) {
         title="Reviews"
         description="Google Play and App Store, collected every morning. New 1–3★ reviews get a reply draft on Telegram to approve or edit here; draft any other reply from its card."
         actions={
+          <>
+          <Link href="/reviews/app-facts" className="btn">
+            <BookText size={15} aria-hidden /> App facts
+          </Link>
           <form action={refreshReviews}>
             <SubmitButton
               pending={
@@ -40,6 +44,7 @@ export default function ReviewsPage({ searchParams }: PageProps<"/reviews">) {
               <RefreshCw size={15} aria-hidden /> Refresh now
             </SubmitButton>
           </form>
+          </>
         }
       />
       <Suspense fallback={<PageSkeleton label="Loading reviews" />}>
@@ -299,6 +304,15 @@ function ReviewCard({ r, reply, canDraft }: { r: SavedReview; reply?: Reply; can
             <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
               <MessageSquareWarning size={14} aria-hidden /> Not answered yet
             </p>
+          )}
+          {r.store === "google_play" && replyable(r) && (
+            <form action={markAnsweredAction} className={unanswered ? "" : "mr-auto"} title="For replies posted in Play Console: Google doesn't report those back for older reviews">
+              <input type="hidden" name="store" value={r.store} />
+              <input type="hidden" name="review_id" value={r.review_id} />
+              <SubmitButton className="btn btn-sm" pending="Saving…">
+                <CheckCheck size={14} aria-hidden /> Replied in Play Console
+              </SubmitButton>
+            </form>
           )}
           {canDraft && replyable(r) && (
             <form action={draftForReviewAction} className="ml-auto">

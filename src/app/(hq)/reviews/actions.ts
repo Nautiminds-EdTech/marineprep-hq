@@ -6,7 +6,8 @@ import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { syncInstalls } from "@/lib/installs";
 import { discardReply, draftPending, draftReply, getReply, saveDraft, sendReply } from "@/lib/replies";
-import { collectReviews } from "@/lib/reviews";
+import { collectReviews, markAnswered } from "@/lib/reviews";
+import { saveAppFacts } from "@/lib/settings";
 
 export async function refreshReviews() {
   await requireAdmin();
@@ -78,6 +79,25 @@ export async function redraftReplyAction(id: number, instruction: string): Promi
     if (!reply) throw new Error("Reply not found");
     await draftReply(reply.store, reply.review_id, { instruction: instruction.trim().slice(0, 500) || undefined, by: who(admin.email) });
     done(id);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** For replies posted in the store console that the store doesn't report back to HQ. */
+export async function markAnsweredAction(formData: FormData) {
+  await requireAdmin();
+  const store = formData.get("store") === "app_store" ? "app_store" : "google_play";
+  await markAnswered(store, String(formData.get("review_id") ?? ""));
+  revalidatePath("/reviews");
+}
+
+export async function saveAppFactsAction(text: string): Promise<Result> {
+  const admin = await requireAdmin();
+  try {
+    await saveAppFacts(text, who(admin.email));
+    revalidatePath("/reviews/app-facts");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
