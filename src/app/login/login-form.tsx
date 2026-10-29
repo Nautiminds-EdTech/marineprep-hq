@@ -3,13 +3,14 @@
 import { useActionState } from "react";
 import { signIn, type LoginState } from "./actions";
 
-export function LoginForm({ initialError }: { initialError?: string }) {
+export function LoginForm({ initialError, next }: { initialError?: string; next?: string }) {
   const [state, action, pending] = useActionState<LoginState, FormData>(signIn, {
     error: initialError,
   });
 
   return (
     <form action={action} className="flex flex-col gap-4">
+      {next && <input type="hidden" name="next" value={next} />}
       <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
         Email
         <input name="email" type="email" required autoComplete="email" className="field" />

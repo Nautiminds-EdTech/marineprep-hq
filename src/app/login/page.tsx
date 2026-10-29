@@ -85,7 +85,7 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
 }
 
 async function Form({ searchParams }: Pick<PageProps<"/login">, "searchParams">) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
   const key = typeof error === "string" ? error : undefined;
-  return <LoginForm initialError={key ? errors[key] : undefined} />;
+  return <LoginForm initialError={key ? errors[key] : undefined} next={typeof next === "string" ? next : undefined} />;
 }

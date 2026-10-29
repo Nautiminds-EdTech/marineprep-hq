@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Funnel, LayoutDashboard, Plug, Star, Wrench, type LucideIcon } from "lucide-react";
+import { Activity, Funnel, LayoutDashboard, Newspaper, Plug, Star, Wrench, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Attention } from "@/lib/attention";
@@ -23,12 +23,14 @@ const items: Item[] = [
   { href: "/quality", label: "Quality", icon: Activity, group: "App health" },
   { href: "/fixes", label: "Fix queue", short: "Fixes", icon: Wrench, group: "App health", badge: "fixesWaiting" },
   { href: "/reviews", label: "Reviews", icon: Star, group: "App health", badge: "reviewsUnanswered" },
+  { href: "/seo", label: "Blog & SEO", short: "Blog", icon: Newspaper, group: "Growth", badge: "postsWaiting" },
   { href: "/connections", label: "Connections", icon: Plug, group: "Setup", tab: false },
 ];
 
 const BADGE_HINT: Record<keyof Attention, string> = {
   fixesWaiting: "waiting for approval",
   reviewsUnanswered: "low reviews without a reply",
+  postsWaiting: "blog posts waiting for approval",
 };
 
 function useActive() {
@@ -36,9 +38,23 @@ function useActive() {
   return (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
 }
 
+type IsActive = (href: string) => boolean;
+const noneActive: IsActive = () => false;
+
 /** Desktop sidebar navigation, grouped, on the deep-ocean hull. */
 export function SideNav({ badges }: { badges?: Attention }) {
-  const isActive = useActive();
+  return <SideNavList badges={badges} isActive={useActive()} />;
+}
+
+/**
+ * The sidebar without an active item, for Suspense fallbacks: usePathname() can't resolve while a
+ * route with an unknown dynamic param (/seo/posts/[id]) prerenders.
+ */
+export function SideNavStatic() {
+  return <SideNavList isActive={noneActive} />;
+}
+
+function SideNavList({ badges, isActive }: { badges?: Attention; isActive: IsActive }) {
   const groups = [...new Set(items.map((i) => i.group))];
   return (
     <nav className="flex flex-col gap-5" aria-label="Main">
@@ -88,7 +104,15 @@ export function SideNav({ badges }: { badges?: Attention }) {
 
 /** Phone bottom tab bar. Fixed to the bottom edge, clear of the home indicator. */
 export function TabBar({ badges }: { badges?: Attention }) {
-  const isActive = useActive();
+  return <TabBarList badges={badges} isActive={useActive()} />;
+}
+
+/** The tab bar without an active tab, for Suspense fallbacks (see SideNavStatic). */
+export function TabBarStatic() {
+  return <TabBarList isActive={noneActive} />;
+}
+
+function TabBarList({ badges, isActive }: { badges?: Attention; isActive: IsActive }) {
   return (
     <nav
       aria-label="Main"

@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { briefText, saveSnapshot, snapshotMetrics, yesterdayNumbers } from "@/lib/brief";
 import { findDrops, formatDrop, MIN_HISTORY_DAYS } from "@/lib/drops";
 import { collectReviews } from "@/lib/reviews";
+import { publishDue } from "@/lib/seo/posts";
 import { createServiceClient } from "@/lib/supabase/server";
 import { esc, sendMessage, telegramConfigured, type Button } from "@/lib/telegram";
 
@@ -31,6 +32,20 @@ export async function GET(req: Request) {
 
   // Reviews first, so new 1–2★ alerts arrive before the brief. A store outage mustn't block the brief.
   const reviews = await collectReviews().catch((e) => ({ error: (e as Error).message }));
+
+  // Blog posts scheduled for today or earlier go live now (09:00 IST).
+  const scheduled = await publishDue().catch((e) => ({ done: [] as string[], failed: [{ id: "*", error: (e as Error).message }] }));
+  if ((scheduled.done.length || scheduled.failed.length) && telegramConfigured()) {
+    const { data: posts } = await db.from("blogs").select("id,title").in("id", [...scheduled.done, ...scheduled.failed.map((f) => f.id)]);
+    const title = (id: string) => esc(posts?.find((p) => p.id === id)?.title ?? id);
+    await sendMessage(
+      [
+        ...scheduled.done.map((id) => `📰 Published as scheduled: <b>${title(id)}</b>`),
+        ...scheduled.failed.map((f) => `⚠️ Scheduled post not published: <b>${title(f.id)}</b>
+${esc(f.error)}`),
+      ].join("\n"),
+    ).catch(() => undefined);
+  }
 
   const numbers = await yesterdayNumbers(db);
   await saveSnapshot(db, numbers);
@@ -89,5 +104,6 @@ export async function GET(req: Request) {
     drops,
     dropAlertSent,
     reviews,
+    scheduled,
   });
 }

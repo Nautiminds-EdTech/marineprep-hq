@@ -183,3 +183,204 @@ h3 {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Blog editor body (TipTap) and the short Claude previews: HQ's own type scale. */
+.post-body {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--ink);
+}
+.post-body > * + * {
+  margin-top: 0.85em;
+}
+.post-body h2 {
+  margin-top: 1.6em;
+  font-size: 1.4rem;
+  line-height: 1.25;
+  font-weight: 600;
+}
+.post-body h3 {
+  margin-top: 1.3em;
+  font-size: 1.15rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+.post-body ul,
+.post-body ol {
+  padding-left: 1.4em;
+}
+.post-body ul {
+  list-style: disc;
+}
+.post-body ol {
+  list-style: decimal;
+}
+.post-body li + li {
+  margin-top: 0.3em;
+}
+.post-body li > p {
+  margin: 0;
+}
+.post-body a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.post-body blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1em;
+  color: var(--ink-2);
+}
+.post-body hr {
+  border-color: var(--line);
+}
+.post-body code {
+  border-radius: 6px;
+  background: var(--surface-2);
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+}
+.post-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.post-body img.ProseMirror-selectednode {
+  outline: 3px solid var(--accent);
+}
+.post-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+.post-body th,
+.post-body td {
+  border: 1px solid var(--line-strong);
+  padding: 0.45em 0.6em;
+  vertical-align: top;
+  text-align: left;
+}
+.post-body th {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+.post-body .selectedCell {
+  background: var(--accent-soft);
+}
+.post-body .tableWrapper {
+  overflow-x: auto;
+}
+.post-body p.is-editor-empty:first-child::before {
+  content: "Start writing…";
+  float: left;
+  height: 0;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+/* Preview styled like marineprep.app's post page (dark, Outfit headings, aqua links). */
+.site-preview {
+  background: #050505;
+  color: rgb(255 255 255 / 0.7);
+  font-weight: 300;
+}
+.site-preview .sp-back {
+  font-family: var(--font-geist-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.4);
+}
+.site-preview .sp-title {
+  margin-top: 2rem;
+  font-family: var(--font-outfit);
+  font-size: clamp(2rem, 6vw, 3.4rem);
+  line-height: 1.1;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.site-preview .sp-meta {
+  margin-top: 1.5rem;
+  font-family: var(--font-geist-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.4);
+}
+.site-preview .sp-hero {
+  margin-top: 2.5rem;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 24px;
+}
+.site-preview .sp-body {
+  margin-top: 3rem;
+  font-size: 1.1rem;
+  line-height: 1.8;
+}
+.site-preview .sp-body > * + * {
+  margin-top: 1.4rem;
+}
+.site-preview .sp-body h2 {
+  margin-top: 2.6rem;
+  font-family: var(--font-outfit);
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  line-height: 1.2;
+  font-weight: 500;
+  color: #fff;
+}
+.site-preview .sp-body h3 {
+  margin-top: 2rem;
+  font-family: var(--font-outfit);
+  font-size: 1.35rem;
+  font-weight: 500;
+  color: #fff;
+}
+.site-preview .sp-body a {
+  color: #26c6da;
+}
+.site-preview .sp-body strong {
+  color: #fff;
+  font-weight: 500;
+}
+.site-preview .sp-body ul,
+.site-preview .sp-body ol {
+  padding-left: 1.5em;
+  color: rgb(255 255 255 / 0.6);
+}
+.site-preview .sp-body ul {
+  list-style: disc;
+}
+.site-preview .sp-body ol {
+  list-style: decimal;
+}
+.site-preview .sp-body blockquote {
+  border-left: 3px solid #26c6da;
+  border-radius: 0 16px 16px 0;
+  background: rgb(38 198 218 / 0.05);
+  padding: 1rem 1.25rem;
+}
+.site-preview .sp-body img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 24px;
+}
+.site-preview .sp-body table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+.site-preview .sp-body th,
+.site-preview .sp-body td {
+  border: 1px solid rgb(255 255 255 / 0.12);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.site-preview .sp-body th {
+  color: #fff;
+  font-weight: 500;
+}

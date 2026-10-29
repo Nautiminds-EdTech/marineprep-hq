@@ -2,7 +2,7 @@ import { Anchor, LogOut, Plug } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Menu } from "@/components/menu";
-import { SideNav, TabBar } from "@/components/nav";
+import { SideNav, SideNavStatic, TabBar, TabBarStatic } from "@/components/nav";
 import { getAttention } from "@/lib/attention";
 import { requireAdmin } from "@/lib/auth";
 import { signOut } from "../login/actions";
@@ -12,7 +12,7 @@ export default function HqLayout({ children }: LayoutProps<"/">) {
     <div className="min-h-dvh md:flex">
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-8 bg-[linear-gradient(180deg,var(--hull),var(--hull-2))] px-3 py-6 text-hull-ink md:flex lg:w-64">
         <Brand />
-        <Suspense fallback={<SideNav />}>
+        <Suspense fallback={<SideNavStatic />}>
           <SideNavWithBadges />
         </Suspense>
         <div className="mt-auto">
@@ -47,7 +47,7 @@ export default function HqLayout({ children }: LayoutProps<"/">) {
         </main>
       </div>
 
-      <Suspense fallback={<TabBar />}>
+      <Suspense fallback={<TabBarStatic />}>
         <TabBarWithBadges />
       </Suspense>
     </div>

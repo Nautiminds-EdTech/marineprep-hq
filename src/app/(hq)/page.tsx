@@ -15,7 +15,7 @@ import { PageHeader, Section } from "@/components/page-header";
 import { PageSkeleton } from "@/components/skeleton";
 import { StatTile } from "@/components/stat-tile";
 import { TrendChart } from "@/components/trend-chart";
-import { getAttention } from "@/lib/attention";
+import { getAttention, type Attention } from "@/lib/attention";
 import { getOverview, SERIES_DAYS, type Overview } from "@/lib/metrics/overview";
 import { formatDay, formatINR, formatTimeIST, formatTodayIST, timeAgo } from "@/lib/time";
 
@@ -200,7 +200,7 @@ function Figure({ label, value, sub }: { label: string; value: string; sub?: str
 }
 
 /** Plain-language signals from the numbers already loaded. No extra queries, no AI. */
-function buildSignals(o: Overview, a: { fixesWaiting: number; reviewsUnanswered: number }): Signal[] {
+function buildSignals(o: Overview, a: Attention): Signal[] {
   const signals: Signal[] = [];
   if (a.fixesWaiting) {
     signals.push({
@@ -216,6 +216,14 @@ function buildSignals(o: Overview, a: { fixesWaiting: number; reviewsUnanswered:
       title: `${a.reviewsUnanswered} low ${a.reviewsUnanswered === 1 ? "review has" : "reviews have"} no reply`,
       detail: "1–3★ in the last 30 days. Replies lift ratings.",
       href: "/reviews?low=1",
+    });
+  }
+  if (a.postsWaiting) {
+    signals.push({
+      tone: "warning",
+      title: `${a.postsWaiting} blog ${a.postsWaiting === 1 ? "post waits" : "posts wait"} for approval`,
+      detail: "Approve in HQ or on Telegram to publish",
+      href: "/seo/posts?view=waiting",
     });
   }
 
