@@ -1,4 +1,4 @@
-import { BookText, CheckCheck, MessageSquareReply, MessageSquareWarning, PenLine, RefreshCw, Sparkles, Star, ThumbsDown } from "lucide-react";
+import { BookText, History, MessageSquareReply, MessageSquareWarning, PenLine, RefreshCw, Sparkles, Star, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { NotConnected } from "@/components/not-connected";
@@ -14,7 +14,7 @@ import { repliesConfigured, repliesFor, type Reply } from "@/lib/replies";
 import { listReviews, replyable, reviewStats, STORE_LABEL, type SavedReview, type Store } from "@/lib/reviews";
 import { createServiceClient } from "@/lib/supabase/server";
 import { formatTimeIST, timeAgo } from "@/lib/time";
-import { draftForReviewAction, markAnsweredAction, refreshReviews } from "./actions";
+import { draftForReviewAction, refreshReviews } from "./actions";
 
 export const metadata = { title: "Reviews · MarinePrep HQ" };
 // Refreshing fetches both stores and may ask Claude for themes.
@@ -78,18 +78,30 @@ async function ReviewsBody({ searchParams }: { searchParams: PageProps<"/reviews
   const params = await searchParams;
   const store = params.store === "google_play" || params.store === "app_store" ? (params.store as Store) : undefined;
   const low = params.low === "1";
+  // The list shows the last 30 days, like the tiles above it; "Show full history" lists everything.
+  const history = params.history === "1";
 
-  const [stats, reviews] = await Promise.all([reviewStats(DAYS), listReviews({ store, low })]);
+  const [stats, reviews] = await Promise.all([
+    reviewStats(DAYS),
+    listReviews({ store, low, days: history ? undefined : DAYS, limit: history ? 1000 : 200 }),
+  ]);
   const replies = await repliesFor(reviews);
   const canDraft = repliesConfigured();
   const maxTheme = stats.themes[0]?.[1].count || 1;
   const maxStars = Math.max(...stats.distribution.map((d) => d.count), 1);
 
+  const href = (q: { store?: Store; low?: boolean; history?: boolean }) => {
+    const search = new URLSearchParams();
+    if (q.store) search.set("store", q.store);
+    if (q.low) search.set("low", "1");
+    if (q.history) search.set("history", "1");
+    return search.size ? `/reviews?${search}` : "/reviews";
+  };
   const filters = [
-    { label: "All", href: "/reviews", active: !store && !low },
-    { label: "Google Play", href: "/reviews?store=google_play", active: !low && store === "google_play" },
-    { label: "App Store", href: "/reviews?store=app_store", active: !low && store === "app_store" },
-    { label: "1–2★ only", href: `/reviews?low=1${store ? `&store=${store}` : ""}`, active: low },
+    { label: "All", href: href({ history }), active: !store && !low },
+    { label: "Google Play", href: href({ store: "google_play", history }), active: !low && store === "google_play" },
+    { label: "App Store", href: href({ store: "app_store", history }), active: !low && store === "app_store" },
+    { label: "1–2★ only", href: href({ store, low: true, history }), active: low },
   ];
 
   return (
@@ -207,9 +219,15 @@ async function ReviewsBody({ searchParams }: { searchParams: PageProps<"/reviews
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">
-            Reviews <span className="text-sm font-normal text-ink-3">({reviews.length})</span>
-          </h2>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h2 className="text-base font-semibold">
+              {history ? "All reviews" : `Last ${DAYS} days`}{" "}
+              <span className="text-sm font-normal text-ink-3">({reviews.length})</span>
+            </h2>
+            <Link href={href({ store, low, history: !history })} className="btn btn-sm">
+              <History size={14} aria-hidden /> {history ? `Last ${DAYS} days only` : "Show full history"}
+            </Link>
+          </div>
           <nav
             aria-label="Filter reviews"
             className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 sm:pb-0"
@@ -232,7 +250,9 @@ async function ReviewsBody({ searchParams }: { searchParams: PageProps<"/reviews
         </div>
         {reviews.length === 0 ? (
           <p className="card p-4 text-sm text-ink-3">
-            No reviews saved yet. Use “Refresh now” or wait for the morning run.
+            {history
+              ? "No reviews saved yet. Use “Refresh now” or wait for the morning run."
+              : `No reviews in the last ${DAYS} days. “Show full history” lists older ones.`}
           </p>
         ) : (
           <ul className="grid gap-3 lg:grid-cols-2">
@@ -304,15 +324,6 @@ function ReviewCard({ r, reply, canDraft }: { r: SavedReview; reply?: Reply; can
             <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
               <MessageSquareWarning size={14} aria-hidden /> Not answered yet
             </p>
-          )}
-          {r.store === "google_play" && replyable(r) && (
-            <form action={markAnsweredAction} className={unanswered ? "" : "mr-auto"} title="For replies posted in Play Console: Google doesn't report those back for older reviews">
-              <input type="hidden" name="store" value={r.store} />
-              <input type="hidden" name="review_id" value={r.review_id} />
-              <SubmitButton className="btn btn-sm" pending="Saving…">
-                <CheckCheck size={14} aria-hidden /> Replied in Play Console
-              </SubmitButton>
-            </form>
           )}
           {canDraft && replyable(r) && (
             <form action={draftForReviewAction} className="ml-auto">

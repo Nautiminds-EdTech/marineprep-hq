@@ -45,6 +45,8 @@ export type CollectResult = {
   errors: Partial<Record<Store, string>>;
   alerted: number;
   themed: number;
+  /** Play reviews their authors deleted, removed from HQ this run */
+  removed?: number;
 };
 
 /** Pulls reviews from both stores, saves them, alerts on new 1–2★ ones and tags themes. */
@@ -109,6 +111,7 @@ export async function collectReviews(): Promise<CollectResult> {
         await db()
           .from("hq_alerts")
           .upsert({ kind: "play_reports_check", key: new Date().toISOString().slice(0, 10), payload: { files, lookups } }, { onConflict: "kind,key" });
+        playComplete = true;
         return combined;
       },
     ]);
@@ -117,6 +120,9 @@ export async function collectReviews(): Promise<CollectResult> {
     sources.push(["app_store", async () => fetchAppStoreReviews((await firstRun("app_store")) ? 50 : 3)]);
   }
 
+  // Set once Play's API list and every report file were read, so anything saved that neither returned
+  // anymore was deleted by its author (e.g. deleted and posted again, which gives a new review ID).
+  let playComplete = false;
   const all: StoreReview[] = [];
   await Promise.all(
     sources.map(async ([store, fetchStore]) => {
@@ -149,11 +155,47 @@ export async function collectReviews(): Promise<CollectResult> {
       const { error } = await db().from("hq_reviews").upsert(rows, { onConflict: "store,review_id" });
       if (error) throw new Error(error.message);
     }
+    if (playComplete) result.removed = await removeDeletedPlayReviews(fetchedAt);
   }
 
   result.alerted = await alertLowRatings(all);
   result.themed = await tagUntagged();
   return result;
+}
+
+/**
+ * Removes saved Play reviews that this run's complete fetch didn't return (fetched_at older than this
+ * run) once Google confirms they're gone: the review by ID is not found, or the same author posted the
+ * same text again under a new ID. More than a few missing at once means a partial fetch, not
+ * deletions, so it then removes nothing.
+ */
+async function removeDeletedPlayReviews(fetchedAt: string) {
+  const { data: missing, error } = await db()
+    .from("hq_reviews")
+    .select("review_id, author, body")
+    .eq("store", "google_play")
+    .lt("fetched_at", fetchedAt);
+  if (error || !missing?.length || missing.length > 5) return 0;
+
+  const gone: string[] = [];
+  for (const r of missing) {
+    let reposted = false;
+    if (r.author && r.body) {
+      const { count } = await db()
+        .from("hq_reviews")
+        .select("review_id", { count: "exact", head: true })
+        .eq("store", "google_play")
+        .eq("author", r.author)
+        .eq("body", r.body)
+        .gte("fetched_at", fetchedAt);
+      reposted = (count ?? 0) > 0;
+    }
+    const notFound = !reposted && !r.review_id.startsWith("csv:") && (await fetchPlayReview(r.review_id).catch(() => undefined)) === null;
+    if (reposted || notFound) gone.push(r.review_id);
+  }
+  if (!gone.length) return 0;
+  const { error: deleteError } = await db().from("hq_reviews").delete().eq("store", "google_play").in("review_id", gone);
+  return deleteError ? 0 : gone.length;
 }
 
 async function alertLowRatings(reviews: StoreReview[]) {
@@ -229,17 +271,6 @@ async function tagUntagged() {
   return tagged;
 }
 
-/** Marks a review as answered when the reply was posted outside HQ and the store doesn't report it. */
-export async function markAnswered(store: Store, reviewId: string) {
-  const { error } = await db()
-    .from("hq_reviews")
-    .update({ reply_body: `(Replied in ${store === "google_play" ? "Play Console" : "App Store Connect"})`, replied_at: new Date().toISOString() })
-    .eq("store", store)
-    .eq("review_id", reviewId)
-    .is("reply_body", null);
-  if (error) throw new Error(error.message);
-}
-
 /** Low ratings (≤3★) from the last 30 days without a reply, for the nav badge and Overview. */
 export async function countUnansweredLow() {
   const { count, error } = await db()
@@ -252,7 +283,8 @@ export async function countUnansweredLow() {
   return count ?? 0;
 }
 
-export async function listReviews(filter: { store?: Store; low?: boolean; limit?: number } = {}) {
+/** Newest first. `days` limits it to reviews posted in that many recent days. */
+export async function listReviews(filter: { store?: Store; low?: boolean; days?: number; limit?: number } = {}) {
   let q = db()
     .from("hq_reviews")
     .select("*")
@@ -260,6 +292,7 @@ export async function listReviews(filter: { store?: Store; low?: boolean; limit?
     .limit(filter.limit ?? 100);
   if (filter.store) q = q.eq("store", filter.store);
   if (filter.low) q = q.lte("rating", 2);
+  if (filter.days) q = q.gte("reviewed_at", new Date(Date.now() - filter.days * 86_400_000).toISOString());
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return data as SavedReview[];

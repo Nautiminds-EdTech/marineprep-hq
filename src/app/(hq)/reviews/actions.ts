@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { syncInstalls } from "@/lib/installs";
 import { discardReply, draftPending, draftReply, getReply, saveDraft, sendReply } from "@/lib/replies";
-import { collectReviews, markAnswered } from "@/lib/reviews";
+import { collectReviews } from "@/lib/reviews";
 import { saveAppFacts } from "@/lib/settings";
 
 export async function refreshReviews() {
@@ -83,14 +83,6 @@ export async function redraftReplyAction(id: number, instruction: string): Promi
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
-}
-
-/** For replies posted in the store console that the store doesn't report back to HQ. */
-export async function markAnsweredAction(formData: FormData) {
-  await requireAdmin();
-  const store = formData.get("store") === "app_store" ? "app_store" : "google_play";
-  await markAnswered(store, String(formData.get("review_id") ?? ""));
-  revalidatePath("/reviews");
 }
 
 export async function saveAppFactsAction(text: string): Promise<Result> {
