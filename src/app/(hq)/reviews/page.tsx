@@ -1,4 +1,4 @@
-import { BookText, History, MessageSquareReply, MessageSquareWarning, PenLine, RefreshCw, Sparkles, Star, ThumbsDown } from "lucide-react";
+import { BookText, ExternalLink, History, MessageSquareReply, MessageSquareWarning, PenLine, RefreshCw, Sparkles, Star, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { NotConnected } from "@/components/not-connected";
@@ -12,6 +12,7 @@ import { requireAdmin } from "@/lib/auth";
 import { playAvailableHere, playConfigured } from "@/lib/play";
 import { repliesConfigured, repliesFor, type Reply } from "@/lib/replies";
 import { listReviews, replyable, reviewStats, STORE_LABEL, type SavedReview, type Store } from "@/lib/reviews";
+import { appStoreListingRating, playListingRating, type StoreRating } from "@/lib/store-ratings";
 import { createServiceClient } from "@/lib/supabase/server";
 import { formatTimeIST, timeAgo } from "@/lib/time";
 import { draftForReviewAction, refreshReviews } from "./actions";
@@ -47,6 +48,9 @@ export default function ReviewsPage({ searchParams }: PageProps<"/reviews">) {
           </>
         }
       />
+      <Suspense fallback={<div className="skeleton h-36" aria-hidden />}>
+        <OnTheStore />
+      </Suspense>
       <Suspense fallback={<PageSkeleton label="Loading reviews" />}>
         <ReviewsBody searchParams={searchParams} />
       </Suspense>
@@ -67,6 +71,59 @@ function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
         />
       ))}
     </span>
+  );
+}
+
+/** The rating each public listing shows right now, as a student in India sees it. */
+async function OnTheStore() {
+  await requireAdmin();
+  const listings = await Promise.allSettled([playListingRating(), appStoreListingRating()]);
+  return (
+    <section className="flex flex-col gap-3" aria-labelledby="on-the-store">
+      <div>
+        <h2 id="on-the-store" className="text-base font-semibold">
+          What students see on the store
+        </h2>
+        <p className="text-sm text-ink-3">The rating on each public listing (India), all-time. Checked hourly.</p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {(["Google Play", "App Store"] as const).map((label, i) => {
+          const r = listings[i];
+          return <ListingCard key={label} label={label} rating={r.status === "fulfilled" ? r.value : null} />;
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ListingCard({ label, rating }: { label: string; rating: StoreRating | null }) {
+  return (
+    <div className="card flex items-start justify-between gap-3 p-4">
+      <div className="flex min-w-0 flex-col">
+        <p className="text-[13px] font-medium text-ink-2">{label}</p>
+        {!rating ? (
+          <p className="mt-2 text-sm text-ink-3">Couldn&apos;t read the listing right now.</p>
+        ) : (
+          <>
+            <p className="display-num mt-2 text-[1.75rem] leading-none sm:text-3xl">
+              {rating.average === null ? "–" : rating.average.toFixed(1)}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
+              {rating.average !== null && <Stars rating={rating.average} size={13} />}
+              <span>
+                {rating.count} {rating.count === 1 ? "rating" : "ratings"}
+                {rating.extra && ` · ${rating.extra}`}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+      {rating && (
+        <a href={rating.url} target="_blank" rel="noreferrer" className="btn btn-sm shrink-0">
+          Listing <ExternalLink size={13} aria-hidden />
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -113,6 +170,7 @@ async function ReviewsBody({ searchParams }: { searchParams: PageProps<"/reviews
         </Notice>
       )}
 
+      <h2 className="-mb-3 text-base font-semibold">Last {DAYS} days</h2>
       <section aria-label={`Last ${DAYS} days`} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {(
           [
