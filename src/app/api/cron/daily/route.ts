@@ -1,13 +1,15 @@
 import { timingSafeEqual } from "node:crypto";
 import { briefText, saveSnapshot, snapshotMetrics, yesterdayNumbers } from "@/lib/brief";
 import { findDrops, formatDrop, MIN_HISTORY_DAYS } from "@/lib/drops";
+import { syncInstalls } from "@/lib/installs";
+import { draftPending } from "@/lib/replies";
 import { collectReviews } from "@/lib/reviews";
 import { publishDue } from "@/lib/seo/posts";
 import { createServiceClient } from "@/lib/supabase/server";
 import { esc, sendMessage, telegramConfigured, type Button } from "@/lib/telegram";
 
-// Reviews (both stores + Claude themes) run before the brief.
-export const maxDuration = 120;
+// Reviews (both stores + Claude themes) run before the brief; reply drafts and installs after it.
+export const maxDuration = 300;
 
 function authorized(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -96,8 +98,14 @@ ${esc(f.error)}`),
     }
   }
 
+  // Reply drafts for new reviews (each posts its own Telegram approval message), then store installs.
+  const replies = await draftPending().catch((e) => ({ drafted: 0, errors: [(e as Error).message] }));
+  const installs = await syncInstalls().catch((e) => ({ errors: { all: (e as Error).message } }));
+
   return Response.json({
     ok: true,
+    replies,
+    installs,
     numbers,
     briefSent: !error,
     historyDays: Math.max(0, ...Object.values(history).map((v) => v.length)),

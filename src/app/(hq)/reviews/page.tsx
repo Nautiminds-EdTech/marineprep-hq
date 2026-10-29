@@ -1,4 +1,4 @@
-import { MessageSquareReply, MessageSquareWarning, RefreshCw, Star, ThumbsDown } from "lucide-react";
+import { MessageSquareReply, MessageSquareWarning, PenLine, RefreshCw, Sparkles, Star, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { NotConnected } from "@/components/not-connected";
@@ -10,10 +10,11 @@ import { SubmitButton } from "@/components/submit-button";
 import { appStoreConfigured } from "@/lib/appstore";
 import { requireAdmin } from "@/lib/auth";
 import { playAvailableHere, playConfigured } from "@/lib/play";
-import { listReviews, reviewStats, STORE_LABEL, type SavedReview, type Store } from "@/lib/reviews";
+import { repliesConfigured, repliesFor, type Reply } from "@/lib/replies";
+import { listReviews, replyable, reviewStats, STORE_LABEL, type SavedReview, type Store } from "@/lib/reviews";
 import { createServiceClient } from "@/lib/supabase/server";
 import { formatTimeIST, timeAgo } from "@/lib/time";
-import { refreshReviews } from "./actions";
+import { draftForReviewAction, refreshReviews } from "./actions";
 
 export const metadata = { title: "Reviews · MarinePrep HQ" };
 // Refreshing fetches both stores and may ask Claude for themes.
@@ -26,7 +27,7 @@ export default function ReviewsPage({ searchParams }: PageProps<"/reviews">) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Reviews"
-        description="Google Play and App Store, collected every morning. New 1–2★ reviews alert Telegram."
+        description="Google Play and App Store, collected every morning. Claude drafts a reply to each new review; approve it on Telegram or edit it here."
         actions={
           <form action={refreshReviews}>
             <SubmitButton
@@ -74,6 +75,8 @@ async function ReviewsBody({ searchParams }: { searchParams: PageProps<"/reviews
   const low = params.low === "1";
 
   const [stats, reviews] = await Promise.all([reviewStats(DAYS), listReviews({ store, low })]);
+  const replies = await repliesFor(reviews);
+  const canDraft = repliesConfigured();
   const maxTheme = stats.themes[0]?.[1].count || 1;
   const maxStars = Math.max(...stats.distribution.map((d) => d.count), 1);
 
@@ -229,7 +232,7 @@ async function ReviewsBody({ searchParams }: { searchParams: PageProps<"/reviews
         ) : (
           <ul className="grid gap-3 lg:grid-cols-2">
             {reviews.map((r) => (
-              <ReviewCard key={`${r.store}:${r.review_id}`} r={r} />
+              <ReviewCard key={`${r.store}:${r.review_id}`} r={r} reply={replies.get(`${r.store}:${r.review_id}`)} canDraft={canDraft} />
             ))}
           </ul>
         )}
@@ -238,8 +241,9 @@ async function ReviewsBody({ searchParams }: { searchParams: PageProps<"/reviews
   );
 }
 
-function ReviewCard({ r }: { r: SavedReview }) {
+function ReviewCard({ r, reply, canDraft }: { r: SavedReview; reply?: Reply; canDraft: boolean }) {
   const unanswered = !r.reply_body && r.rating <= 3;
+  const pendingDraft = reply && (reply.status === "draft" || reply.status === "failed");
   return (
     <li className="card flex min-w-0 flex-col gap-3 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -279,12 +283,33 @@ function ReviewCard({ r }: { r: SavedReview }) {
           </p>
           <p className="break-words whitespace-pre-wrap">{r.reply_body}</p>
         </div>
+      ) : pendingDraft ? (
+        <Link href={`/reviews/reply/${reply.id}`} className="mt-auto flex items-center justify-between gap-2 rounded-xl border border-accent/30 bg-accent-soft p-3 text-xs text-ink hover:border-accent">
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5 font-semibold text-accent">
+              <PenLine size={13} aria-hidden /> {reply.status === "failed" ? "Reply failed to send" : "Reply draft waiting"}
+            </span>
+            <span className="mt-1 line-clamp-2 block text-ink-2">{reply.draft}</span>
+          </span>
+          <span className="shrink-0 font-semibold text-accent">Review</span>
+        </Link>
       ) : (
-        unanswered && (
-          <p className="mt-auto flex items-center gap-1.5 text-xs font-medium text-warning">
-            <MessageSquareWarning size={14} aria-hidden /> Not answered yet
-          </p>
-        )
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
+          {unanswered && (
+            <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
+              <MessageSquareWarning size={14} aria-hidden /> Not answered yet
+            </p>
+          )}
+          {canDraft && replyable(r) && (
+            <form action={draftForReviewAction} className="ml-auto">
+              <input type="hidden" name="store" value={r.store} />
+              <input type="hidden" name="review_id" value={r.review_id} />
+              <SubmitButton className="btn btn-sm" pending="Drafting…">
+                <Sparkles size={14} aria-hidden /> {reply?.status === "discarded" ? "Draft again" : "Draft a reply"}
+              </SubmitButton>
+            </form>
+          )}
+        </div>
       )}
     </li>
   );

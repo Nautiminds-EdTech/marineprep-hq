@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { after } from "next/server";
 import { decideProposal, draftProposal, proposeFromSentry } from "@/lib/fixes";
+import { discardReply, sendReply } from "@/lib/replies";
 import { createServiceClient } from "@/lib/supabase/server";
 import { answerCallback, isTelegramAdmin } from "@/lib/telegram";
 
@@ -60,6 +61,16 @@ export async function POST(req: Request) {
       await answerCallback(cb.id, created ? "Drafting a fix proposal…" : "Already in the fix queue");
       if (created) {
         after(() => draftProposal(id).catch((e) => console.error("[telegram] draft failed:", (e as Error).message)));
+      }
+    } else if (kind === "rr" && (action === "s" || action === "d")) {
+      // Review replies: send the current draft to the store, or discard it.
+      const id = Number(ref);
+      if (action === "s") {
+        await answerCallback(cb.id, "Sending the reply…");
+        await sendReply(id, by, "telegram").catch((e) => console.error("[telegram] reply send failed:", (e as Error).message));
+      } else {
+        const done = await discardReply(id, by, "telegram");
+        await answerCallback(cb.id, done ? "Discarded" : "Already decided");
       }
     } else {
       await answerCallback(cb.id);

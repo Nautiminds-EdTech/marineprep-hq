@@ -14,14 +14,19 @@ export const connections: Connection[] = [
   { name: "Sentry", purpose: "Crash-free rate, top issues, live alerts", env: ["SENTRY_ORG", "SENTRY_PROJECT", "SENTRY_AUTH_TOKEN"], optional: ["SENTRY_WEBHOOK_SECRET"] },
   {
     name: "Google Play",
-    purpose: "Reviews (keyless sign-in from Vercel production)",
+    purpose: "Reviews, replies and installs (keyless sign-in from Vercel production)",
     env: ["GCP_PROJECT_NUMBER", "GOOGLE_PLAY_SERVICE_ACCOUNT", "GOOGLE_PLAY_PACKAGE_NAME"],
     optional: ["GOOGLE_PLAY_REPORTS_BUCKET"],
   },
   {
     name: "App Store Connect",
-    purpose: "Reviews",
+    purpose: "Reviews and replies (Customer Support key)",
     env: ["APP_STORE_ISSUER_ID", "APP_STORE_KEY_ID", "APP_STORE_PRIVATE_KEY_B64", "APP_STORE_APP_ID"],
+  },
+  {
+    name: "App Store sales",
+    purpose: "Daily first-time downloads for the Funnel page (key with the Sales role)",
+    env: ["APP_STORE_SALES_KEY_ID", "APP_STORE_SALES_PRIVATE_KEY_B64", "APP_STORE_VENDOR_NUMBER"],
   },
   {
     name: "Telegram",
@@ -30,7 +35,7 @@ export const connections: Connection[] = [
     optional: ["TELEGRAM_WEBHOOK_SECRET"],
   },
   { name: "GitHub", purpose: "Approved fixes become issues in the app repo", env: ["GITHUB_TOKEN", "GITHUB_REPO"] },
-  { name: "Claude", purpose: "Root cause and fix drafts, review themes", env: ["ANTHROPIC_API_KEY"] },
+  { name: "Claude", purpose: "Fix drafts, review themes and reply drafts, blog editor", env: ["ANTHROPIC_API_KEY"] },
   { name: "Deployment", purpose: "Daily cron and links back to HQ", env: ["CRON_SECRET", "HQ_URL"] },
 ];
 

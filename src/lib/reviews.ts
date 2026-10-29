@@ -26,6 +26,11 @@ export type SavedReview = StoreReview & { themes: string[] };
 
 export const STORE_LABEL: Record<Store, string> = { google_play: "Google Play", app_store: "App Store" };
 
+/** A review HQ can answer through the store API: it has text, a real store ID (not a report-only row) and no reply. */
+export function replyable(r: Pick<StoreReview, "review_id" | "body" | "reply_body">) {
+  return !!r.body?.trim() && !r.reply_body && !r.review_id.startsWith("csv:");
+}
+
 // Only alert on low ratings this recent, so the first App Store backfill doesn't flood Telegram.
 const ALERT_WINDOW_MS = 3 * 86_400_000;
 
@@ -115,8 +120,10 @@ export async function collectReviews(): Promise<CollectResult> {
 
 async function alertLowRatings(reviews: StoreReview[]) {
   if (!telegramConfigured()) return 0;
+  // Reviews Claude will draft a reply for get one Telegram message with the draft instead (lib/replies.ts).
+  const drafts = !!process.env.ANTHROPIC_API_KEY;
   const recent = reviews.filter(
-    (r) => r.rating <= 2 && Date.now() - Date.parse(r.reviewed_at) < ALERT_WINDOW_MS,
+    (r) => r.rating <= 2 && Date.now() - Date.parse(r.reviewed_at) < ALERT_WINDOW_MS && !(drafts && replyable(r)),
   );
   let sent = 0;
   for (const r of recent) {

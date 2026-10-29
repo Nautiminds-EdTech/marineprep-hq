@@ -199,3 +199,69 @@ export async function fetchPlayReviewHistory(months?: number): Promise<StoreRevi
   }
   return reviews;
 }
+
+// ── Replies ──────────────────────────────────────────────────────────────────────
+
+/** Posts (or replaces) the developer reply on a Google Play review. Play caps replies at 350 characters. */
+export async function replyToPlayReview(reviewId: string, text: string) {
+  if (!playAvailableHere()) throw new Error("Google Play replies only work on the live HQ (keyless sign-in from Vercel production).");
+  const headers = await authClient().getRequestHeaders();
+  const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${process.env.GOOGLE_PLAY_PACKAGE_NAME}/reviews/${encodeURIComponent(reviewId)}:reply`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { ...Object.fromEntries(headers.entries()), "Content-Type": "application/json" },
+    body: JSON.stringify({ replyText: text }),
+  });
+  if (!res.ok) {
+    const detail = (await res.text()).slice(0, 300);
+    // Old reviews can be out of the API's reach; the Console still takes the reply.
+    throw new Error(`Google Play ${res.status}: ${detail}. If it persists, reply in Play Console → Ratings and reviews.`);
+  }
+}
+
+// ── Installs from the monthly stats reports ──────────────────────────────────────
+
+export type DailyInstalls = { day: string; installs: number };
+
+/**
+ * Daily installs from stats/installs/installs_<package>_<YYYYMM>_overview.csv: "Daily User Installs"
+ * (people installing on their first device), falling back to device installs in older files.
+ * `months` limits it to the newest N files; omit for everything.
+ */
+export async function fetchPlayInstalls(months?: number): Promise<DailyInstalls[]> {
+  const bucket = playReportsBucket();
+  if (!bucket) return [];
+  const headers = await authClient().getRequestHeaders();
+  const pkg = process.env.GOOGLE_PLAY_PACKAGE_NAME;
+
+  const list = await fetch(
+    `https://storage.googleapis.com/storage/v1/b/${bucket}/o?prefix=${encodeURIComponent(`stats/installs/installs_${pkg}_`)}`,
+    { headers },
+  );
+  if (!list.ok) throw new Error(`Play install reports ${list.status}: ${(await list.text()).slice(0, 200)}`);
+  const names = (((await list.json()) as { items?: { name: string }[] }).items ?? [])
+    .map((o) => o.name)
+    .filter((n) => n.endsWith("_overview.csv"))
+    .sort()
+    .reverse()
+    .slice(0, months ?? Infinity);
+
+  const days: DailyInstalls[] = [];
+  for (const name of names) {
+    const res = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(name)}?alt=media`, { headers });
+    if (!res.ok) throw new Error(`Play install report ${name} ${res.status}`);
+    const [header, ...rows] = parseCsv(decodeReport(await res.arrayBuffer()));
+    const col = (label: string) => header.findIndex((h) => h.trim() === label);
+    const date = col("Date");
+    const users = col("Daily User Installs");
+    const devices = col("Daily Device Installs");
+    if (date < 0 || (users < 0 && devices < 0)) throw new Error(`Play install report ${name}: unexpected columns`);
+    for (const r of rows) {
+      const day = r[date]?.trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day ?? "")) continue;
+      const value = Number(r[users >= 0 ? users : devices]);
+      if (Number.isFinite(value)) days.push({ day, installs: value });
+    }
+  }
+  return days;
+}

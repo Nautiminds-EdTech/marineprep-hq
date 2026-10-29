@@ -8,6 +8,7 @@ import { PageHeader, Section } from "@/components/page-header";
 import { PageSkeleton } from "@/components/skeleton";
 import { StatTile } from "@/components/stat-tile";
 import { requireAdmin } from "@/lib/auth";
+import { storeInstalls, type StoreInstalls } from "@/lib/installs";
 import { FUNNEL_STEPS, getFeatureReach, getFunnel, posthogConfigured, type Funnel } from "@/lib/posthog";
 import { createServiceClient } from "@/lib/supabase/server";
 import { istDayStart } from "@/lib/time";
@@ -43,10 +44,13 @@ async function FunnelBody() {
   } catch (e) {
     return <Notice tone="critical">Couldn&apos;t load PostHog: {(e as Error).message}</Notice>;
   }
-  const payers = await countPayers(istDayStart(DAYS - 1));
+  const [payers, store] = await Promise.all([countPayers(istDayStart(DAYS - 1)), storeInstalls(DAYS).catch(() => null)]);
   const start = funnel.total[0]?.count ?? 0;
   const end = funnel.total[funnel.total.length - 1]?.count ?? 0;
-  const installs = funnel.installs.reduce((s, i) => s + i.count, 0);
+  // Store reports when we have them (PostHog misses installs: the event sits on an anonymous ID).
+  const installRows = installsByPlatform(funnel, store);
+  const installs = installRows.reduce((s, i) => s + i.count, 0);
+  const fromStores = installRows.some((i) => i.source === "store");
   const maxReach = Math.max(...reach.map((f) => f.users), 1);
 
   return (
@@ -71,7 +75,10 @@ async function FunnelBody() {
           label="Installs"
           icon={Download}
           value={n(installs)}
-          sub={funnel.installs.map((i) => `${n(i.count)} ${i.platform}`).join(" · ") || "none"}
+          sub={
+            (installRows.map((i) => `${n(i.count)} ${i.platform === "Android" ? "Google Play" : i.platform === "iOS" ? "App Store" : i.platform}`).join(" · ") || "none") +
+            (fromStores ? " · store reports" : " · PostHog")
+          }
         />
       </section>
 
@@ -84,10 +91,11 @@ async function FunnelBody() {
           <FunnelBars steps={funnel.total} />
         </Section>
         <Section title="What stands out" description="Read from this page's numbers">
-          <AttentionList signals={signals(funnel, payers)} empty="No step loses an unusual share of people." />
+          <AttentionList signals={signals(funnel, payers, installRows)} empty="No step loses an unusual share of people." />
           <p className="border-t border-line pt-3 text-xs text-ink-3">
-            Installs aren&apos;t part of the funnel: the app records them under an anonymous ID that isn&apos;t merged
-            into the logged-in user. Payments aren&apos;t either: the app doesn&apos;t send a purchase event to
+            Installs come from the stores&apos; own reports (Google Play daily user installs, App Store first-time
+            downloads), a day or two behind{store?.ios === null ? "; the App Store part needs the Sales key (Connections)" : ""}. They aren&apos;t part of
+            the funnel, which starts at sign-in. Payments aren&apos;t either: the app doesn&apos;t send a purchase event to
             PostHog yet.
           </p>
         </Section>
@@ -150,7 +158,19 @@ async function FunnelBody() {
   );
 }
 
-function signals(funnel: Funnel, payers: number | null): Signal[] {
+type InstallRow = { platform: string; count: number; source: "store" | "posthog" };
+
+/** Installs per platform (named like PostHog's $os), from the store reports where synced, else PostHog. */
+function installsByPlatform(funnel: Funnel, store: StoreInstalls | null): InstallRow[] {
+  const posthog = (platform: string) => funnel.installs.find((i) => i.platform === platform)?.count ?? 0;
+  const rows: InstallRow[] = [
+    store?.android != null ? { platform: "Android", count: store.android, source: "store" } : { platform: "Android", count: posthog("Android"), source: "posthog" },
+    store?.ios != null ? { platform: "iOS", count: store.ios, source: "store" } : { platform: "iOS", count: posthog("iOS"), source: "posthog" },
+  ];
+  return rows.filter((r) => r.count > 0 || r.source === "store");
+}
+
+function signals(funnel: Funnel, payers: number | null, installs: InstallRow[]): Signal[] {
   const out: Signal[] = [];
   const steps = funnel.total;
   const worst = biggestDrop(steps);
@@ -171,8 +191,7 @@ function signals(funnel: Funnel, payers: number | null): Signal[] {
     });
   }
   // A platform whose first step is far below its share of installs usually means a sign-in problem there.
-  for (const install of funnel.installs) {
-    if (install.platform === "Unknown") continue;
+  for (const install of installs) {
     const started = funnel.byPlatform.find((p) => p.platform === install.platform)?.steps[0]?.count ?? 0;
     if (install.count >= 10 && started / install.count < 0.2) {
       out.push({

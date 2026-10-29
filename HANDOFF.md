@@ -340,17 +340,29 @@ light and dark, with no sideways scroll; `next build`, `tsc` and `eslint` pass.
 
 Build each with the new components and tokens above, so new pages match the redesign (check phone width too).
 
-1. **Reply to reviews from HQ:** Claude drafts a reply, approve in HQ or Telegram, HQ posts it (Play Developer API
-   `reviews.reply`; App Store Connect `customerReviewResponses`). Both keys already allow replies. UI: a "Draft
-   reply" button on unanswered review cards, the draft shown in an editable box with Approve/Discard, the same
-   pattern as the Fix queue. The Reviews nav counter then clears as replies go out.
+1. **Reply to reviews from HQ: BUILT 29 Oct** (needs migration `20261029140000_hq_review_replies.sql` on staging +
+   prod before deploying).
+   - `src/lib/replies.ts`: Claude (Opus 5.5, effort low, structured output) drafts in the support team's voice; code
+     enforces ≤350 characters (Play's cap, used for both stores), `support@nautiminds.com` only when
+     `needs_followup` (bugs, payments, account issues, complaints without detail), banned stock phrases, no em dash;
+     up to 2 rewrites when a draft breaks a rule.
+   - New answerable reviews (text, real store ID, no reply, last 7 days) are drafted by the 09:00 cron and after
+     "Refresh now" (max 3 per run). Each gets one Telegram message: review + draft + Approve & send / Discard +
+     "Edit in HQ" (URL to `/reviews/reply/<id>`). New 1–2★ answerable reviews get this message instead of the old
+     alert. Saving in HQ edits the Telegram message, so Approve there sends the latest text.
+   - Review cards: "Draft a reply" (any answerable review) and "Reply draft waiting" links.
+   - Sending: Play `reviews.reply` (production only, keyless); App Store `customerReviewResponses` (existing
+     Customer Support key). Old Play reviews may be out of the API's reach: the error says to reply in Play Console.
 2. **Counselling revenue in HQ:** counselling payments live in `counselling_bookings` (`payment_status = 'paid'`,
    `amount` in paise; 2 paid at ₹199 on 29–30 Jul, 6 pending), not in `payments`, so Overview revenue and the daily
    brief miss them. Add them as a separate revenue line (a "Counselling" figure in the Overview's Sales block and the
    daily brief), plus a counselling signal when bookings sit in `pending`.
-3. **Store installs on the Funnel page:** Play installs from the same bucket (`stats/installs/`); App Store downloads
-   need a second key with the **Sales** role plus the vendor number. Replaces PostHog's unreliable install count
-   on the Funnel page's Installs tile, and could feed an installs trend on the Overview.
+3. **Store installs on the Funnel page: BUILT 29 Oct.** `src/lib/installs.ts` saves `installs_android` (Play
+   `stats/installs/*_overview.csv`, "Daily User Installs") and `installs_ios` (App Store Sales and Trends, first-time
+   downloads: product types 1, 1F, 1T, F1) per day in `hq_daily_snapshots`; full history once, then recent days, from
+   the 09:00 cron and "Refresh now". The Funnel's Installs tile and platform signal use them, PostHog as fallback.
+   App Store part needs env `APP_STORE_SALES_KEY_ID`, `APP_STORE_SALES_PRIVATE_KEY_B64` (base64 of the .p8),
+   `APP_STORE_VENDOR_NUMBER` (a second key with the **Sales** role).
 4. **Weekly Claude analyst brief:** Monday Telegram message across funnel, quality, reviews and revenue with 2–3
    suggestions (~$0.10/week, inside the $20/month Anthropic workspace limit).
 5. **Instagram pipeline:** deferred until the dashboard was done (it now is).
