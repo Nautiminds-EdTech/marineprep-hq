@@ -132,11 +132,14 @@ export function decodeReport(buf: ArrayBuffer) {
   return new TextDecoder("utf-8").decode(bytes);
 }
 
+export type ReportFileStats = { name: string; rows: number; withText: number; withReply: number };
+
 /**
  * Reviews from the monthly report files (all history, including star-only ratings).
- * `months` limits it to the newest N files; omit for everything.
+ * `months` limits it to the newest N files; omit for everything. `stats` collects per-file counts.
+ * A review can appear in more than one file; the copy with a reply (or the newest update) wins.
  */
-export async function fetchPlayReviewHistory(months?: number): Promise<StoreReview[]> {
+export async function fetchPlayReviewHistory(months?: number, stats?: ReportFileStats[]): Promise<StoreReview[]> {
   const bucket = playReportsBucket();
   if (!bucket) return [];
   const headers = await authClient().getRequestHeaders();
@@ -160,7 +163,7 @@ export async function fetchPlayReviewHistory(months?: number): Promise<StoreRevi
     });
     if (!res.ok) throw new Error(`Play report ${name} ${res.status}`);
     const [header, ...rows] = parseCsv(decodeReport(await res.arrayBuffer()));
-    const col = (label: string) => header.findIndex((h) => h.trim() === label);
+    const col = (label: string) => header.findIndex((h) => h.replace(/^\uFEFF/, "").trim().toLowerCase() === label.toLowerCase());
     const c = {
       version: col("App Version Name"),
       language: col("Reviewer Language"),
@@ -174,6 +177,12 @@ export async function fetchPlayReviewHistory(months?: number): Promise<StoreRevi
       reply: col("Developer Reply Text"),
       link: col("Review Link"),
     };
+    stats?.push({
+      name: name.split("/").pop()!,
+      rows: rows.length,
+      withText: rows.filter((r) => r[c.text]?.trim()).length,
+      withReply: c.reply < 0 ? -1 : rows.filter((r) => r[c.reply]?.trim()).length,
+    });
     for (const r of rows) {
       const rating = Number(r[c.rating]);
       if (!(rating >= 1 && rating <= 5)) continue;
@@ -197,7 +206,12 @@ export async function fetchPlayReviewHistory(months?: number): Promise<StoreRevi
       });
     }
   }
-  return reviews;
+  const best = new Map<string, StoreReview>();
+  for (const r of reviews) {
+    const prev = best.get(r.review_id);
+    if (!prev || (!prev.reply_body && r.reply_body) || (!!prev.reply_body === !!r.reply_body && r.reviewed_at > prev.reviewed_at)) best.set(r.review_id, r);
+  }
+  return [...best.values()];
 }
 
 // ── Replies ──────────────────────────────────────────────────────────────────────

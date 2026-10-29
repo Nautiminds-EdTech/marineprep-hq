@@ -1,7 +1,7 @@
 import "server-only";
 import { tagReviewThemes } from "@/lib/analyst";
 import { appStoreConfigured, fetchAppStoreReviews } from "@/lib/appstore";
-import { fetchPlayReviewHistory, fetchPlayReviews, playAvailableHere, playConfigured, playReportsBucket } from "@/lib/play";
+import { fetchPlayReviewHistory, fetchPlayReviews, playAvailableHere, playConfigured, playReportsBucket, type ReportFileStats } from "@/lib/play";
 import { createServiceClient } from "@/lib/supabase/server";
 import { esc, sendMessage, telegramConfigured, type Button } from "@/lib/telegram";
 
@@ -64,7 +64,8 @@ export async function collectReviews(): Promise<CollectResult> {
         const recent = await fetchPlayReviews();
         const bucket = playReportsBucket();
         if (!bucket) return recent;
-        // Full history once per bucket (marked in hq_alerts), then the two newest monthly files.
+        // Every monthly file, every run (they're small): a reply posted in Play Console to an old review
+        // can show up in an older file, so reading only the newest months missed replies.
         const { data: imported } = await db()
           .from("hq_alerts")
           .select("id")
@@ -72,8 +73,13 @@ export async function collectReviews(): Promise<CollectResult> {
           .eq("key", bucket)
           .maybeSingle();
         let history: StoreReview[];
+        const files: ReportFileStats[] = [];
         try {
-          history = await fetchPlayReviewHistory(imported ? 2 : undefined);
+          history = await fetchPlayReviewHistory(24, files);
+          // What the report files contain today (rows, text, replies per file), for checking from the DB.
+          await db()
+            .from("hq_alerts")
+            .upsert({ kind: "play_reports_check", key: new Date().toISOString().slice(0, 10), payload: { files } }, { onConflict: "kind,key" });
         } catch (e) {
           // Bucket access can lag the Play Console grant by up to a day; keep the API reviews meanwhile.
           result.errors.google_play = `history: ${(e as Error).message.slice(0, 250)}`;
@@ -103,14 +109,24 @@ export async function collectReviews(): Promise<CollectResult> {
   );
 
   if (all.length) {
-    // Upsert without `themes`, so tags from earlier runs are kept.
-    const { error } = await db()
-      .from("hq_reviews")
-      .upsert(
-        all.map((r) => ({ ...r, fetched_at: new Date().toISOString() })),
-        { onConflict: "store,review_id" },
-      );
-    if (error) throw new Error(error.message);
+    // Upsert without `themes`, so tags from earlier runs are kept. Rows without a reply leave out the
+    // reply columns, so a reply already saved (e.g. one HQ just posted) isn't wiped by a report file
+    // that hasn't caught up yet.
+    const fetchedAt = new Date().toISOString();
+    const withReply = all.filter((r) => r.reply_body).map((r) => ({ ...r, fetched_at: fetchedAt }));
+    const withoutReply = all
+      .filter((r) => !r.reply_body)
+      .map((r) => {
+        const row: Partial<StoreReview> & { fetched_at: string } = { ...r, fetched_at: fetchedAt };
+        delete row.reply_body;
+        delete row.replied_at;
+        return row;
+      });
+    for (const rows of [withReply, withoutReply]) {
+      if (!rows.length) continue;
+      const { error } = await db().from("hq_reviews").upsert(rows, { onConflict: "store,review_id" });
+      if (error) throw new Error(error.message);
+    }
   }
 
   result.alerted = await alertLowRatings(all);

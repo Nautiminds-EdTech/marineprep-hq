@@ -17,6 +17,8 @@ export const REPLY_LIMIT = 350; // Google Play's cap; used for both stores
 export const SUPPORT_EMAIL = "support@nautiminds.com";
 /** Only new reviews get a draft automatically; older ones get one from the Reviews page. */
 const AUTO_DRAFT_WINDOW_MS = 7 * 86_400_000;
+/** Automatic drafts (and their Telegram approval message) only for 1–3★; 4–5★ are drafted on request in HQ. */
+const AUTO_DRAFT_MAX_RATING = 3;
 
 export type ReplyStatus = "draft" | "sending" | "sent" | "failed" | "discarded";
 export type Reply = {
@@ -55,51 +57,59 @@ const Draft = z.object({
     .describe(`True only when we need more details from them or the issue needs investigating; then the reply asks them to write to ${SUPPORT_EMAIL}`),
 });
 
-const SYSTEM = `You are on the support team of Marine Prep, writing a public reply to one app store review.
+const SYSTEM = `You are a member of Marine Prep's customer support team, writing the public developer reply to one
+app store review. It appears under the review on the store, so other students and parents will read it too.
 
 Marine Prep is an app by Nautiminds Edtech that helps Class 12 students in India prepare for IMU CET, the Indian
-Maritime University entrance exam. It has full-length mock tests, a question bank, chapter notes, previous year
-papers, Marine AI for doubts, and one-to-one counselling calls with mentors. Paid plans unlock the full content. It's
-on Android and iOS. Support email: ${SUPPORT_EMAIL}.
+Maritime University entrance exam. It has mock tests, a question bank, chapter notes, previous year papers, Marine AI
+for doubts, and one-to-one counselling calls with mentors. Paid plans unlock the full content. It's on Android and
+iOS. Support email: ${SUPPORT_EMAIL}.
 
-Write the way a real person on a small, caring support team writes after actually reading this review:
-- Respond to what they said: name the feature, problem or praise they mentioned. A reply that could fit any review
-  is a bad reply.
-- Short and plain. Usually 1-3 sentences. Hard limit: ${REPLY_LIMIT} characters including the sign-off. Aim for
-  under 300.
-- End with "Team Marine Prep" on its own (no dash before it).
-- If the reviewer's name is clearly a first name ("Arjun_07" is Arjun, "Priya S" is Priya), you may start with
-  "Hi <name>,". If it isn't clearly a name, don't use one.
-- Reply in English, unless the review is in Hindi (Devanagari or Latin script); then reply in simple Hindi in the
-  same script.
+Tone: professional, courteous and calm, like an experienced support team at an established education company.
+- Full, well-formed sentences in standard English. No slang or casual phrases ("fair point", "get a feel for it",
+  "pair well", "all the best", "glad it's working", "no worries", "awesome", "super").
+- Respond to what this reviewer actually said (the feature, problem or praise they mention), so the reply could
+  only belong to this review.
+- A brief, sincere thank-you is fine. Acknowledge a complaint plainly without being defensive or arguing.
+- 1-3 sentences, usually under 280 characters. Hard limit: ${REPLY_LIMIT} characters.
+- No sign-off or signature at the end (no "Team Marine Prep", "Regards", "Thanks, the team"). The store already shows
+  the reply is from the developer.
+- If the reviewer's name is clearly a first name ("Arjun_07" is Arjun, "Priya S" is Priya), you may open with
+  "Hi <name>,". Otherwise no name.
+- English, unless the review is in Hindi (Devanagari or Latin script); then polite, simple Hindi in the same script.
 
-needs_followup:
-- true when we can't help from the review alone and need them to write to us: crashes, bugs, login or OTP
-  problems, payment or refund issues, wrong content or answers, account problems, or a complaint with no detail
-  ("not working", "bekar app"). Then ask them to email ${SUPPORT_EMAIL} and say exactly what to include (for
-  example the phone model and what they were doing, or the payment date). You may say the team will look into it.
-- false otherwise (praise, a suggestion, a general opinion). Then don't mention any email address or "contact us".
+Facts: say only what the review or the description above supports. Don't describe what is free and what is paid
+beyond "paid plans unlock the full content". No promises: no dates, no "fixed in the next update", no refunds, no
+discounts, no new features. Don't claim anything is fixed.
 
-Never:
-- Stock phrases: "We appreciate your feedback", "Thank you for taking the time", "We're sorry to hear",
-  "We value your", "Rest assured", "We strive", "your satisfaction", "inconvenience caused", "Dear user",
-  "Hope this helps", "Feel free to".
-- Promises: no dates, no "fixed in the next update", no refunds, no new features, no discounts. Don't claim
-  something is fixed.
-- Asking them to change their rating, emojis, hashtags, more than one exclamation mark, em dashes, Markdown.
+needs_followup is your decision. Read the review and decide whether we can only help if they write to us:
+- true for: a crash, bug, freeze or error; login or OTP trouble; a payment, subscription or refund problem; wrong
+  questions, answers or content; an account problem; or a complaint too vague to act on ("not working", "bekar app",
+  "waste"). Then ask them to email ${SUPPORT_EMAIL} and say exactly what to include (for example their phone model
+  and what they were doing when it happened, or the payment date and registered phone number), and say the team will
+  look into it.
+- false for: praise, a general opinion (including "too much is paid"), a feature suggestion, or anything the reply
+  itself fully answers. Then don't mention any email address or "contact us".
 
-Examples of the tone (don't copy them):
-- 5★ "Very good": "Glad it's working for you. If you haven't tried the full-length mocks yet, they're the closest
-  thing to the real IMU CET timing. All the best for the exam. Team Marine Prep"
-- 1★ "app not working" by Arjun_07: "Hi Arjun, that shouldn't happen. Could you email ${SUPPORT_EMAIL} with your phone model
-  and the screen where it stops? We'll look into it and get back to you. Team Marine Prep"
-- 4★ "good but need more physics questions": "Noted on physics. We're adding questions chapter by chapter, and your
-  review helps us decide where to start. Meanwhile the question bank filters by chapter if you want to focus on one.
-  Team Marine Prep"`;
+Never: emojis, exclamation marks, hashtags, em dashes, Markdown, asking them to change their rating, "Rest assured",
+"Dear user", "Hope this helps", "inconvenience caused", "your satisfaction", "we strive".
+
+Examples of the register (don't copy the wording):
+- 1★ "it's nothing inside, only paid user can access (but it's awesome if pay)": "Thank you for your review. Most of
+  the preparation material is part of our paid plans, and we're pleased the full content has been useful to you. We
+  are working to make the free experience more helpful for students who are exploring the app."
+  -> needs_followup false. (Saying we are "working to" improve something general is fine; no dates or specifics.)
+- 1★ "app not working" by Arjun_07: "Hi Arjun, we're sorry the app isn't working for you. Please email
+  ${SUPPORT_EMAIL} with your phone model and the screen where the problem occurs, and our team will look into it."
+  -> needs_followup true.
+- 5★ "Really helpful app, notes and mocks are good": "Thank you for the kind review. We're pleased the notes and mock
+  tests are helping with your IMU CET preparation. The previous year papers are also worth using alongside the mocks."
+  -> needs_followup false.`;
 
 const BANNED = [
-  /appreciate your (feedback|review)/i, /thank you for taking the time/i, /sorry to hear/i, /we value your/i, /rest assured/i,
-  /we strive/i, /your satisfaction/i, /inconvenience caused/i, /dear user/i, /hope this helps/i, /feel free to/i, /—/,
+  /rest assured/i, /dear user/i, /hope this helps/i, /inconvenience caused/i, /your satisfaction/i, /we strive/i,
+  /fair point/i, /get a feel/i, /all the best/i, /no worries/i, /awesome/i, /pair(s)? well/i, /—/, /!/,
+  /(team marine prep|regards|cheers|thanks,?\s*(the )?team)\.?\s*$/i,
 ];
 
 /** What's wrong with a draft, or null when it passes. */
@@ -163,8 +173,11 @@ async function loadReview(store: Store, reviewId: string) {
   return data as SavedReview;
 }
 
-/** Drafts (or redrafts) the reply to one review and posts/updates its Telegram approval message. */
-export async function draftReply(store: Store, reviewId: string, opts: { instruction?: string; by?: string } = {}) {
+/**
+ * Drafts (or redrafts) the reply to one review. `notify` posts a Telegram approval message (automatic
+ * drafts); a draft that already has one keeps it up to date either way.
+ */
+export async function draftReply(store: Store, reviewId: string, opts: { instruction?: string; by?: string; notify?: boolean } = {}) {
   const review = await loadReview(store, reviewId);
   if (!replyable(review)) throw new Error(review.reply_body ? "This review already has a reply." : "This review can't be answered from HQ (no text, or a report-only rating).");
   let draft;
@@ -193,11 +206,11 @@ export async function draftReply(store: Store, reviewId: string, opts: { instruc
     .single();
   if (error) throw new Error(error.message);
   const reply = { ...(data as Reply), review };
-  await syncTelegram(reply);
+  if (opts.notify || reply.telegram_message_id) await syncTelegram(reply);
   return reply;
 }
 
-/** Drafts replies for new answerable reviews that don't have one yet (cron and "Refresh now"). */
+/** Drafts replies for new answerable 1–3★ reviews that don't have one yet (cron and "Refresh now"). */
 export async function draftPending(limit = 3) {
   if (!repliesConfigured()) return { drafted: 0, errors: [] as string[] };
   const { data: reviews } = await db()
@@ -206,6 +219,7 @@ export async function draftPending(limit = 3) {
     .is("reply_body", null)
     .not("body", "is", null)
     .not("review_id", "like", "csv:%")
+    .lte("rating", AUTO_DRAFT_MAX_RATING)
     .gte("reviewed_at", new Date(Date.now() - AUTO_DRAFT_WINDOW_MS).toISOString())
     .order("reviewed_at", { ascending: false })
     .limit(20);
@@ -217,7 +231,7 @@ export async function draftPending(limit = 3) {
   const errors: string[] = [];
   for (const r of todo) {
     try {
-      await draftReply(r.store as Store, r.review_id);
+      await draftReply(r.store as Store, r.review_id, { notify: true });
       drafted++;
     } catch (e) {
       errors.push(`${r.store}:${r.review_id}: ${(e as Error).message}`);
@@ -253,13 +267,14 @@ export async function countDrafts() {
 
 // ── Editing and deciding ─────────────────────────────────────────────────────
 
-export async function saveDraft(id: number, text: string, needsFollowup: boolean, by: string) {
+/** Saves an admin's edit. Whether it asks them to write to support follows from the text itself. */
+export async function saveDraft(id: number, text: string, by: string) {
   const draft = text.trim();
   if (!draft) throw new Error("The reply is empty.");
   if (draft.length > REPLY_LIMIT) throw new Error(`The reply is ${draft.length} characters; the limit is ${REPLY_LIMIT}.`);
   const { data, error } = await db()
     .from("hq_review_replies")
-    .update({ draft, needs_followup: needsFollowup, edited_by: by, error: null, status: "draft" })
+    .update({ draft, needs_followup: draft.includes(SUPPORT_EMAIL), edited_by: by, error: null, status: "draft" })
     .eq("id", id)
     .in("status", ["draft", "failed"])
     .select("*")
@@ -345,7 +360,7 @@ function telegramText(r: ReplyWithReview) {
     "",
     `<b>Reply</b> (${r.draft.length}/${REPLY_LIMIT}${r.edited_by ? `, edited by ${esc(r.edited_by)}` : ""})`,
     `<blockquote>${esc(r.draft)}</blockquote>`,
-    r.needs_followup ? `📧 Asks them to write to ${SUPPORT_EMAIL}` : "",
+    r.needs_followup ? `📧 Asks them to write to ${SUPPORT_EMAIL} (needs details or investigation)` : "No support email needed",
     status[r.status],
   ]
     .filter((l) => l !== null)

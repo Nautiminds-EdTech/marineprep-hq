@@ -27,7 +27,7 @@ export default function ReviewsPage({ searchParams }: PageProps<"/reviews">) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Reviews"
-        description="Google Play and App Store, collected every morning. Claude drafts a reply to each new review; approve it on Telegram or edit it here."
+        description="Google Play and App Store, collected every morning. New 1–3★ reviews get a reply draft on Telegram to approve or edit here; draft any other reply from its card."
         actions={
           <form action={refreshReviews}>
             <SubmitButton

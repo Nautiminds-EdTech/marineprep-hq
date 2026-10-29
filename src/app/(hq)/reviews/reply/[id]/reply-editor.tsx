@@ -22,7 +22,6 @@ export function ReplyEditor(props: {
   const { id, limit, email } = props;
   const router = useRouter();
   const [text, setText] = useState(props.initial);
-  const [followup, setFollowup] = useState(props.initialFollowup);
   const [instruction, setInstruction] = useState("");
   const [message, setMessage] = useState<{ tone: "good" | "critical"; text: string } | null>(
     props.status === "failed" && props.error ? { tone: "critical", text: `Last attempt failed: ${props.error}` } : null,
@@ -32,15 +31,8 @@ export function ReplyEditor(props: {
 
   const length = text.trim().length;
   const hasEmail = text.includes(email);
-  const warning =
-    length > limit
-      ? `${length - limit} characters over the limit.`
-      : followup && !hasEmail
-        ? `You ticked "asks them to write to support", but ${email} isn't in the reply.`
-        : !followup && hasEmail
-          ? `The reply mentions ${email}; tick the box if they need to write to us, or remove it.`
-          : null;
-  const changed = text !== props.initial || followup !== props.initialFollowup;
+  const warning = length > limit ? `${length - limit} characters over the limit.` : null;
+  const changed = text !== props.initial;
 
   function act(fn: () => Promise<{ ok: boolean; error?: string }>, ok: string) {
     setMessage(null);
@@ -78,13 +70,13 @@ export function ReplyEditor(props: {
         </span>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} className="field text-[15px] leading-relaxed text-ink" />
       </label>
-      <label className="flex items-start gap-2.5 text-sm text-ink-2">
-        <input type="checkbox" checked={followup} onChange={(e) => setFollowup(e.target.checked)} className="mt-0.5 size-4 accent-[var(--accent)]" />
-        <span>
-          Asks them to write to {email}
-          <span className="block text-xs text-ink-3">For bugs, payments, account problems or anything we need details for.</span>
-        </span>
-      </label>
+      <p className="text-xs text-ink-3">
+        {hasEmail
+          ? `Asks them to write to ${email}: ${props.initialFollowup ? "Claude judged this review needs details or investigation." : "added in your edit."}`
+          : props.initialFollowup
+            ? `Claude had asked them to write to ${email}; your edit removed it.`
+            : "No support email: Claude judged this review doesn't need follow-up."}
+      </p>
       {props.editedBy && <p className="text-xs text-ink-3">Last edited by {props.editedBy}.</p>}
       {warning && <p className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-ink">{warning}</p>}
       {message && (
@@ -97,15 +89,15 @@ export function ReplyEditor(props: {
           type="button"
           className="btn-primary"
           disabled={busy || length === 0 || length > limit}
-          onClick={() => confirm(`Post this reply publicly on ${props.store}?`) && act(() => sendReplyAction(id, text, followup), `Sent to ${props.store}.`)}
+          onClick={() => confirm(`Post this reply publicly on ${props.store}?`) && act(() => sendReplyAction(id, text), `Sent to ${props.store}.`)}
         >
           <Send size={16} aria-hidden /> {props.status === "failed" ? "Try again" : "Approve & send"}
         </button>
-        <button type="button" className="btn" disabled={busy || !changed || length === 0 || length > limit} onClick={() => act(() => saveReplyAction(id, text, followup), "Saved. The Telegram message shows this version now.")}>
+        <button type="button" className="btn" disabled={busy || !changed || length === 0 || length > limit} onClick={() => act(() => saveReplyAction(id, text), "Saved. The Telegram message shows this version now.")}>
           <Check size={16} aria-hidden /> Save
         </button>
         {changed && (
-          <button type="button" className="btn" disabled={busy} onClick={() => { setText(props.initial); setFollowup(props.initialFollowup); }}>
+          <button type="button" className="btn" disabled={busy} onClick={() => setText(props.initial)}>
             <RotateCcw size={16} aria-hidden /> Undo changes
           </button>
         )}

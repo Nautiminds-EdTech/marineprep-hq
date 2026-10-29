@@ -39,10 +39,10 @@ export async function draftForReviewAction(formData: FormData) {
   redirect(`/reviews/reply/${reply.id}`);
 }
 
-export async function saveReplyAction(id: number, text: string, needsFollowup: boolean): Promise<Result> {
+export async function saveReplyAction(id: number, text: string): Promise<Result> {
   const admin = await requireAdmin();
   try {
-    await saveDraft(id, text, needsFollowup, who(admin.email));
+    await saveDraft(id, text, who(admin.email));
     done(id);
     return { ok: true };
   } catch (e) {
@@ -51,10 +51,10 @@ export async function saveReplyAction(id: number, text: string, needsFollowup: b
 }
 
 /** Saves the text as shown, then posts it to the store. */
-export async function sendReplyAction(id: number, text: string, needsFollowup: boolean): Promise<Result> {
+export async function sendReplyAction(id: number, text: string): Promise<Result> {
   const admin = await requireAdmin();
   try {
-    await saveDraft(id, text, needsFollowup, who(admin.email));
+    await saveDraft(id, text, who(admin.email));
     const sent = await sendReply(id, who(admin.email), "hq");
     done(id);
     return sent ? { ok: true } : { ok: false, error: "Someone already sent or discarded this reply." };

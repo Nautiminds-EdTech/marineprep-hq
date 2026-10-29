@@ -342,14 +342,21 @@ Build each with the new components and tokens above, so new pages match the rede
 
 1. **Reply to reviews from HQ: BUILT 29 Oct** (needs migration `20261029140000_hq_review_replies.sql` on staging +
    prod before deploying).
-   - `src/lib/replies.ts`: Claude (Opus 5.5, effort low, structured output) drafts in the support team's voice; code
-     enforces ≤350 characters (Play's cap, used for both stores), `support@nautiminds.com` only when
-     `needs_followup` (bugs, payments, account issues, complaints without detail), banned stock phrases, no em dash;
-     up to 2 rewrites when a draft breaks a rule.
-   - New answerable reviews (text, real store ID, no reply, last 7 days) are drafted by the 09:00 cron and after
-     "Refresh now" (max 3 per run). Each gets one Telegram message: review + draft + Approve & send / Discard +
-     "Edit in HQ" (URL to `/reviews/reply/<id>`). New 1–2★ answerable reviews get this message instead of the old
-     alert. Saving in HQ edits the Telegram message, so Approve there sends the latest text.
+   - `src/lib/replies.ts`: Claude (Opus 5.5, effort low, structured output) drafts in a **professional, courteous
+     support-team register** (user feedback 29 Oct: the first drafts sounded too casual; **no sign-off**, no "Team
+     Marine Prep"). Code enforces ≤350 characters (Play's cap, used for both stores), no slang/stock phrases, no
+     exclamation marks, no trailing signature; up to 2 rewrites when a draft breaks a rule.
+   - **Claude decides `needs_followup`** (the user doesn't want to tick a box): bugs, payments, account issues,
+     wrong content or vague complaints → ask them to email `support@nautiminds.com` with specific details; praise,
+     opinions, suggestions → no email. An admin edit keeps whatever the text says (flag = text contains the email).
+   - **Automatic drafts only for 1–3★** (text, real store ID, no reply, last 7 days), by the 09:00 cron and after
+     "Refresh now" (max 3 per run), each with one Telegram message: review + draft + Approve & send / Discard +
+     "Edit in HQ" (URL to `/reviews/reply/<id>`). 4–5★: drafted only on request from the review card, no Telegram.
+     Saving in HQ edits the Telegram message, so Approve there sends the latest text.
+   - **Play replies made in Play Console weren't showing (29 Oct):** reply text for older reviews only comes from the
+     monthly report CSVs and HQ re-read only the newest two. Now every run reads all files (≤24), merges duplicates
+     preferring the copy with a reply, and records per-file counts in `hq_alerts` kind `play_reports_check` (key =
+     date) so you can see which files carry replies. Rows without a reply no longer overwrite a saved reply.
    - Review cards: "Draft a reply" (any answerable review) and "Reply draft waiting" links.
    - Sending: Play `reviews.reply` (production only, keyless); App Store `customerReviewResponses` (existing
      Customer Support key). Old Play reviews may be out of the API's reach: the error says to reply in Play Console.
